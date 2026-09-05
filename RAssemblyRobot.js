@@ -12,40 +12,24 @@ class RAssemblyRobot extends Node {
             new RAssemblyVM(this);
     }
 
+    // Compila el codigo recibido
     compile() {
-
-        const lexer =
-            new RAssemblyLexer(
-                this.source
-            );
-
-        const tokens =
-            lexer.tokenize();
+        const lexer = new RAssemblyLexer(this.source);
+        // Convertimos el codigo fuente a Tokens.
+        const tokens = lexer.tokenize();
         console.log(tokens);
-        const parser =
-            new RAssemblyParser(
-                tokens
-            );
-        
-        const program =
-            parser.parse();
-
+        const parser = new RAssemblyParser(tokens);
+        // Parseamos lo tokens generados.
+        const program = parser.parse();
+        // Cargamos en la VM el programa generado
         this.vm.load(program);
     }
 
     tick(deltaTime) {
         this.vm.update();
-        let x = this._pos.x;
-        let y = this._pos.y;
-        if(this.hasVariable("robotX"))
-            x = this.getVariable("robotX");
-        if(this.hasVariable("robotY"))
-            y = this.getVariable("robotY");
-        this.setPosition(new Vector2(x, y));
     }
 
     registerModule(name, callback) {
-
         this.vm.registerModule(
             name,
             callback

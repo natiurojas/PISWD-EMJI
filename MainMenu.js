@@ -108,7 +108,10 @@ class MainMenu extends Scene {
         playBtn.onReleased = () => {
             leavePlayAnim.stop();
             hoverPlayAnim.stop();
-            blackScreenAnim.play()
+            blackScreenAnim.play();
+            blackScreenAnim.onFinish = () => {
+                Scene.change(new FightScene());
+            };
         };
         settingsBtn.onHover = () => {
             leaveSettingsAnim.stop();

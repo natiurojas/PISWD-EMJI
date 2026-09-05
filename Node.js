@@ -28,11 +28,7 @@ class Node {
         this.childCount = 0;
     }
 
-
-    // =========================================================
-    // TRANSFORM
-    // =========================================================
-
+    // Funcion para actualizar su posicion respecto 
     updateTransform() {
         if (this.parent !== null) {
             const parent = this.parent;
@@ -48,20 +44,10 @@ class Node {
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
 
-            const rotated = new Vector2(
-                cos * scaled.x - sin * scaled.y,
-                sin * scaled.x + cos * scaled.y
-            );
+            const rotated = new Vector2(cos * scaled.x - sin * scaled.y, sin * scaled.x + cos * scaled.y);
+            this._globalPos = Vector2.add(parent._globalPos,rotated);
 
-            this._globalPos = Vector2.add(
-                parent._globalPos,
-                rotated
-            );
-
-            this._globalScale = new Vector2(
-                this._scale.x * parent._globalScale.x,
-                this._scale.y * parent._globalScale.y
-            );
+            this._globalScale = new Vector2(this._scale.x * parent._globalScale.x, this._scale.y * parent._globalScale.y);
 
             this._globalRotation =
                 parent._globalRotation + this._rotation;

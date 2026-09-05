@@ -20,8 +20,8 @@ class Game {
     _rootWorld.name = "_rootWorld";
     this.root.UI = _rootUI;
     this.root.World = _rootWorld;
-    this.root.addChild(_rootUI);
     this.root.addChild(_rootWorld);
+    this.root.addChild(_rootUI);
   }
   loop()
   {

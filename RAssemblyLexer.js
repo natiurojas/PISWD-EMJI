@@ -110,24 +110,15 @@ class RAssemblyLexer {
         const line = this.line;
 
         this.advance(); // "
-
         let value = "";
 
-        while (
-            !this.isAtEnd() &&
-            this.peek() !== '"'
-        ) {
-
+        while (!this.isAtEnd() && this.peek() !== '"' ) {
             if (this.peek() === '\n')
                 this.line++;
-
             value += this.advance();
         }
-
-        if (this.isAtEnd()) {
-            throw new SyntaxError(
-                `RASSEMBLY: string sin cerrar en línea ${line}.`
-            );
+        if(this.isAtEnd()) {
+            throw new SyntaxError(`RASSEMBLY: string sin cerrar en línea ${line}.`);
         }
 
         this.advance(); // "

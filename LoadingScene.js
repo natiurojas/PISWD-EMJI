@@ -39,7 +39,7 @@ class LoadingScene extends Scene {
             bar.pos = new Vector2(Math.cos(angleRad) * radius - barWidth / 2, Math.sin(angleRad) * radius - barHeight / 2);
             // Orientamos la barra hacia afuera.
             bar.rotation = angle + 90;
-            bar.color =new Color("white");
+            bar.color = new Color("white");
             this.spinner.addChild(bar);
 
             // Animacion de la barra
@@ -51,11 +51,9 @@ class LoadingScene extends Scene {
                     16,
                     bar,
                     {
-                        scale: {
-                            from:
-                                new Vector2(1, 1),
-                            to:
-                                new Vector2(1, 0.35)
+                        scaleY: {
+                            from: 1,
+                            to: 0.35
                         }
                     },
                     "EASEINOUT"

@@ -192,10 +192,6 @@ class RAssemblyParser {
         return statements;
     }
 
-    // =========================
-    // EXPRESIONES
-    // =========================
-
     expression() {
         return this.or();
     }
@@ -319,7 +315,7 @@ class RAssemblyParser {
 
         let expression = this.unary();
 
-        while (
+        while(
             this.match(
                 "MULTIPLY",
                 "DIVIDE"

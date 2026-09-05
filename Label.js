@@ -14,12 +14,7 @@ class Label extends Node {
 
         this.mustBeRerendered = true;
     }
-
-
-    // =========================================================
-    // FONT
-    // =========================================================
-
+    
     loadFont(fontPath, fontSize) {
 
         this.fontPath = fontPath;

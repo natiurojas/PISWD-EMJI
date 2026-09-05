@@ -14,7 +14,7 @@ class KeyManager {
     }
 
     update() {
-        // Los eventos son momentáneos.
+        // Los eventos son momentaneos.
         this.isDown = false;
         this.isUp = false;
         this.keyCode = -10;
