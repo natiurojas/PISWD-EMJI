@@ -5,7 +5,8 @@ class RAssemblyVM {
         this.robot = robot;
 
         this.variables = {};
-        this.modules = {};
+        this.modules = {}; // Modulos registrados
+        this.importedModules = {}; // Modulos importados(Cuando se usa 'IMPORTAR "NOMBRE_MODULO"')
 
         this.program = null;
 
@@ -32,13 +33,13 @@ class RAssemblyVM {
     importModule(statement) {
         if(this.modules[statement.module] === undefined)
             throw new Error(`RASSEMBLY: El módulo '${statement.module}' no existe.`);
+        this.importedModules[statement.module] = this.modules[statement.module];
     }
 
     callModule(name) {
-
-        const module = this.modules[name];
+        const module = this.importedModules[name];
         if(typeof module !== "function")
-            throw new Error(`RASSEMBLY: El módulo '${name}' no existe.`);
+            throw new Error(`RASSEMBLY: El módulo '${name}' no fue importado.`);
 
         module(this.robot, this);
     }
@@ -63,13 +64,28 @@ class RAssemblyVM {
 
     // Ejecuta todas las instrucciones sin pausas(bloquea el juego)
     execute(program) {
-
         this.load(program);
-
         while(this.running) {
-
             this.update();
         }
+    }
+
+    // Pausa la VM de ejecutar codigo
+    pause() {
+        if(!this.running)
+            return;
+
+        this.running = false;
+        this.paused = true;
+    }
+
+    // Reanuda la VM de ejecutar codigo
+    resume() {
+        if(!this.program || !this.paused)
+            return;
+
+        this.paused = false;
+        this.running = true;
     }
 
     // Ejecuta un par de instrucciones(Evita bloquear el juego)
@@ -92,8 +108,7 @@ class RAssemblyVM {
 
     // Avanza y ejecuta una instruccion(un "paso" o step)
     step() {
-
-        if (!this.running)
+        if(!this.running)
             return;
 
         if(this.executionStack.length === 0) {
@@ -102,10 +117,8 @@ class RAssemblyVM {
         }
 
         const frame = this.executionStack[this.executionStack.length - 1];
-        
         // Para el "WHILE" o "MIENTRAS"
-        if (frame.type === "WHILE") {
-
+        if(frame.type === "WHILE") {
             // Terminamos una iteracion.
             if (frame.ip >= frame.statements.length) {
                 frame.iterations++;
@@ -124,13 +137,12 @@ class RAssemblyVM {
             }
         }
         // Bloque de codigo normal
-        if(frame.ip >= frame.statements.length)
-        {
+        if(frame.ip >= frame.statements.length) {
             this.executionStack.pop();
             return;
         }
 
-        const statement =frame.statements[frame.ip];
+        const statement = frame.statements[frame.ip];
         frame.ip++;
 
         this.executeStatement(statement);
@@ -179,8 +191,7 @@ class RAssemblyVM {
     }
 
     startWhile(statement) {
-        if(this.evaluate(statement.condition))
-        {
+        if(this.evaluate(statement.condition)) {
             this.executionStack.push({
                 type: "WHILE",
                 statements: statement.body,
@@ -205,8 +216,7 @@ class RAssemblyVM {
                 );
             case "UNARY": {
                 const right = this.evaluate(expression.right);
-                switch(expression.operator)
-                {
+                switch(expression.operator) {
                     case "NEGATE":
                         return -right;
                     case "NOT":
