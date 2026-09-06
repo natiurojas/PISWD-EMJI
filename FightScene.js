@@ -19,6 +19,7 @@ class FightScene extends Scene {
 
         let code = `
             IMPORTAR "GIRAR"
+            IMPORTAR "IMPRIMIR"
 
             VAR angulo = 0
             VAR radio = 100
@@ -30,6 +31,8 @@ class FightScene extends Scene {
 
                 SI angulo >= 360 ENTONCES
                     angulo = 0
+                SINO
+                    LLAMAR IMPRIMIR
                 FIN
             FIN
         `;
@@ -43,6 +46,9 @@ class FightScene extends Scene {
             const radianes = angulo * Math.PI / 180;
             robot.posX = Math.cos(radianes) * radio;
             robot.posY = Math.sin(radianes) * radio;
+        });
+        robot.registerModule("IMPRIMIR", (robot, vm) => {
+            console.log(`El angulo es: ${vm.getVariable("angulo")}`);
         });
         let robotSprt = new Sprite();
         robotSprt.img = AssetManager.images["./Sprites/Nave00.png"];

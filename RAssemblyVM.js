@@ -8,7 +8,7 @@ class RAssemblyVM {
         this.modules = {}; // Modulos registrados
         this.importedModules = {}; // Modulos importados(Cuando se usa 'IMPORTAR "NOMBRE_MODULO"')
 
-        this.program = null;
+        this.program = null; // Las instrucciones generadas por el Parser(RAssemblyParser)
 
         // Pila de ejecucion.
         // Cada elemento representa un bloque que estamos ejecutando.
@@ -168,8 +168,10 @@ class RAssemblyVM {
                 this.callModule(statement.module);
                 break;
             case "IF":
-                if (this.evaluate(statement.condition))
-                    this.pushBlock(statement.body);
+                if(this.evaluate(statement.condition))
+                    this.pushBlock(statement.thenBody);
+                else if(statement.elseBody !== null)
+                    this.pushBlock(statement.elseBody);
                 break;
             case "WHILE":
                 this.startWhile(statement);

@@ -32,10 +32,7 @@ class RAssemblyParser {
         }
 
         // variable = expresión
-        if (
-            this.check("IDENTIFIER") &&
-            this.checkNext("ASSIGN")
-        ) {
+        if (this.check("IDENTIFIER") && this.checkNext("ASSIGN")) {
             return this.assignment();
         }
 
@@ -59,6 +56,7 @@ class RAssemblyParser {
         );
     }
 
+    // Genera instrucciones para importar un modulo
     importStatement() {
 
         const module = this.consume(
@@ -72,6 +70,7 @@ class RAssemblyParser {
         };
     }
 
+    // Genera instrucciones para la declaracion de una variable.
     variableDeclaration() {
 
         const name = this.consume(
@@ -92,6 +91,7 @@ class RAssemblyParser {
         };
     }
 
+    // Genera instrucciones para indicar que se esta asignando Variable
     assignment() {
 
         const name = this.consume(
@@ -135,7 +135,10 @@ class RAssemblyParser {
             "Se esperaba 'ENTONCES'."
         );
 
-        const body = this.blockUntil("END");
+        const thenBody = this.blockUntil("ELSE", "END"); 
+        let elseBody = null;
+        if(this.match("ELSE"))
+            elseBody = this.blockUntil("END");
 
         this.consume(
             "END",
@@ -145,7 +148,8 @@ class RAssemblyParser {
         return {
             type: "IF",
             condition,
-            body
+            thenBody,
+            elseBody
         };
     }
 
@@ -172,22 +176,14 @@ class RAssemblyParser {
         };
     }
 
-    blockUntil(endToken) {
-
+    blockUntil(...endTokens) {
         const statements = [];
-
-        while (
-            !this.check(endToken) &&
-            !this.check("EOF")
-        ) {
+        while(!endTokens.some(token => this.check(token)) && !this.check("EOF")) {
             statements.push(this.statement());
         }
 
-        if (this.check("EOF")) {
-            throw this.error(
-                `Se esperaba '${endToken}'.`
-            );
-        }
+        if(this.check("EOF")) 
+            throw this.error(`Se esperaba '${endTokens.join("' o '")}'.`);
 
         return statements;
     }

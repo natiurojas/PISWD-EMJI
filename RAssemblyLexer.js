@@ -184,6 +184,7 @@ class RAssemblyLexer {
 
             "SI": "IF",
             "ENTONCES": "THEN",
+            "SINO": "ELSE",
 
             "MIENTRAS": "WHILE",
             "HACER": "DO",
