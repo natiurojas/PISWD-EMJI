@@ -8,10 +8,10 @@ class MainMenu extends Scene {
     }
     preload() {
         return [
-            "./Sprites/archivementsBtn.jpeg",
-            "./Sprites/playBtn.jpeg",
-            "./Sprites/settingsBtn.jpeg",
-            "./Sprites/title.jpeg"
+            "./Assets/archivementsBtn.jpeg",
+            "./Assets/playBtn.jpeg",
+            "./Assets/settingsBtn.jpeg",
+            "./Assets/title.jpeg"
         ];
     }
     onStart()
@@ -29,7 +29,7 @@ class MainMenu extends Scene {
         playBtn.pos = new Vector2(250, 280);
         playBtn.scale = new Vector2(0.7, 0.7);
         let playBtnSprt = new Sprite();
-        playBtnSprt.img = AssetManager.images["./Sprites/playBtn.jpeg"];
+        playBtnSprt.img = AssetManager.images["./Assets/playBtn.jpeg"];
         playBtn.size = playBtnSprt.size.clone();
         playBtn.addChild(playBtnSprt);
         this.addChild(playBtn);
@@ -39,7 +39,7 @@ class MainMenu extends Scene {
         settingsBtn.pos = new Vector2(260, 410);
         settingsBtn.scale = new Vector2(0.7, 0.7);
         let settingsBtnSprt = new Sprite();
-        settingsBtnSprt.img = AssetManager.images["./Sprites/settingsBtn.jpeg"];
+        settingsBtnSprt.img = AssetManager.images["./Assets/settingsBtn.jpeg"];
         settingsBtn.size = settingsBtnSprt.size.clone();
         settingsBtn.addChild(settingsBtnSprt);
         this.addChild(settingsBtn);
@@ -49,7 +49,7 @@ class MainMenu extends Scene {
         archivsBtn.pos = new Vector2(260, 490);
         archivsBtn.scale = new Vector2(0.7, 0.7);
         let archivsBtnSprt = new Sprite();
-        archivsBtnSprt.img = AssetManager.images["./Sprites/archivementsBtn.jpeg"];
+        archivsBtnSprt.img = AssetManager.images["./Assets/archivementsBtn.jpeg"];
         archivsBtn.size = archivsBtnSprt.size.clone();
         archivsBtn.addChild(archivsBtnSprt);
         this.addChild(archivsBtn);
@@ -65,7 +65,7 @@ class MainMenu extends Scene {
 
         let title = new Sprite();
         title.name = "title";
-        title.img = AssetManager.images["./Sprites/title.jpeg"];
+        title.img = AssetManager.images["./Assets/title.jpeg"];
         title.pos = new Vector2(-40, 60);
         title.scale = new Vector2(0.7, 0.7);
         this.addChild(title);

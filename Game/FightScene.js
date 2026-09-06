@@ -7,13 +7,13 @@ class FightScene extends Scene {
     }
     preload() {
         return [
-            "./Sprites/arena.jpeg",
-            "./Sprites/Nave00.png"
+            "./Assets/arena.jpeg",
+            "./Assets/Nave00.png"
         ];
     }
     onStart() {
         const arenaSprt = new Sprite();
-        arenaSprt.img = AssetManager.images["./Sprites/arena.jpeg"];
+        arenaSprt.img = AssetManager.images["./Assets/arena.jpeg"];
         arenaSprt.size = new Vector2(Game.instance.width, Game.instance.height);
         this.addChild(arenaSprt);
 
@@ -51,7 +51,7 @@ class FightScene extends Scene {
             console.log(`El angulo es: ${vm.getVariable("angulo")}`);
         });
         let robotSprt = new Sprite();
-        robotSprt.img = AssetManager.images["./Sprites/Nave00.png"];
+        robotSprt.img = AssetManager.images["./Assets/Nave00.png"];
         robot.addChild(robotSprt);
         robot.pos = new Vector2(100, 100);
         robot.scale = new Vector2(0.25, 0.25);
