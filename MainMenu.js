@@ -54,6 +54,15 @@ class MainMenu extends Scene {
         archivsBtn.addChild(archivsBtnSprt);
         this.addChild(archivsBtn);
 
+        playBtn._baseX = playBtn.pos.x;
+        playBtn._baseY = playBtn.pos.y;
+
+        settingsBtn._baseX = settingsBtn.pos.x;
+        settingsBtn._baseY = settingsBtn.pos.y;
+
+        archivsBtn._baseX = archivsBtn.pos.x;
+        archivsBtn._baseY = archivsBtn.pos.y;
+
         let title = new Sprite();
         title.name = "title";
         title.img = AssetManager.images["./Sprites/title.jpeg"];
@@ -93,50 +102,70 @@ class MainMenu extends Scene {
                 "LINEAR"
             );
 
-        const [hoverPlayAnim, leavePlayAnim] = this.makeHoverLeaveAnim(playBtn);
-        const [hoverSettingsAnim, leaveSettingsAnim] = this.makeHoverLeaveAnim(settingsBtn);
-        const [hoverArchivsAnim, leaveArchivsAnim] = this.makeHoverLeaveAnim(archivsBtn);
+        let playBtnAnim = null;
+        let settingsBtnAnim = null;
+        let archivsBtnAnim = null;
         
         playBtn.onHover = () => {
-            leavePlayAnim.stop();
-            hoverPlayAnim.play();
+            if(playBtnAnim)
+                playBtnAnim.stop();
+
+            playBtnAnim = this.animateButton(playBtn, true);
         };
         playBtn.onLeave = () => {
-            hoverPlayAnim.stop();
-            leavePlayAnim.play();
+            if(playBtnAnim)
+                playBtnAnim.stop();
+            
+            playBtnAnim = this.animateButton(playBtn, false);
         };
         playBtn.onReleased = () => {
-            leavePlayAnim.stop();
-            hoverPlayAnim.stop();
+            playBtnAnim.stop();
+            playBtnAnim = this.animateButton(playBtn, false);
             blackScreenAnim.play();
             blackScreenAnim.onFinish = () => {
                 Scene.change(new FightScene());
             };
         };
         settingsBtn.onHover = () => {
-            leaveSettingsAnim.stop();
-            hoverSettingsAnim.play();
+            if(settingsBtnAnim)
+                settingsBtnAnim.stop();
+
+            settingsBtnAnim = this.animateButton(settingsBtn, true);
         };
         settingsBtn.onLeave = () => {
-            hoverSettingsAnim.play();
-            leaveSettingsAnim.play();
+            if(settingsBtnAnim)
+                settingsBtnAnim.stop();
+
+            settingsBtnAnim = this.animateButton(settingsBtn, false);
         };
         archivsBtn.onHover = () => {
-            leaveArchivsAnim.stop();
-            hoverArchivsAnim.play();
+            if(archivsBtnAnim)
+                archivsBtnAnim.stop();
+
+            archivsBtnAnim = this.animateButton(archivsBtn, true);
         };
         archivsBtn.onLeave = () => {
-            hoverArchivsAnim.stop();
-            leaveArchivsAnim.play();
+            if(archivsBtnAnim)
+                archivsBtnAnim.stop();
+
+            archivsBtnAnim = this.animateButton(archivsBtn, false);
         };
 
         console.log("¡El menú comenzó!");
     }
+    animateButton(btn, hovered) {
+        const animation = new Animation();
+        const fromX = btn.pos.x;
+        const fromY = btn.pos.y;
+        const fromScaleX = btn.scale.x;
+        const fromScaleY = btn.scale.y;
 
-    makeHoverLeaveAnim(btn) {
-        const hoverAnim = new Animation();
-        const leaveAnim = new Animation();
-        hoverAnim
+        const toX = hovered ? btn._baseX - 20 : btn._baseX;
+        const toY = hovered ? btn._baseY - 10 : btn._baseY;
+
+        const toScale = hovered ? 0.8 : 0.7;
+
+        animation
             .setFrames(16)
             .to(
                 1,
@@ -144,50 +173,27 @@ class MainMenu extends Scene {
                 btn,
                 {
                     posX: {
-                        from: btn.pos.x,
-                        to: btn.pos.x - 20
+                        from: fromX,
+                        to: toX
                     },
                     posY: {
-                        from: btn.pos.y,
-                        to: btn.pos.y - 10
+                        from: fromY,
+                        to: toY
                     },
                     scaleX: {
-                        from: 0.7,
-                        to: 0.8
+                        from: fromScaleX,
+                        to: toScale
                     },
                     scaleY: {
-                        from: 0.7,
-                        to: 0.8
+                        from: fromScaleY,
+                        to: toScale
                     }
                 },
                 "EASEINOUT"
             );
-        leaveAnim
-            .setFrames(16)
-            .to(
-                1,
-                8,
-                btn,
-                {
-                    posX: {
-                        from: btn.pos.x - 20,
-                        to: btn.pos.x
-                    },
-                    posY: {
-                        from: btn.pos.y - 10,
-                        to: btn.pos.y
-                    },
-                    scaleX: {
-                        from: 0.8,
-                        to: 0.7
-                    },
-                    scaleY: {
-                        from: 0.8,
-                        to: 0.7
-                    }
-                },
-                "EASEINOUT"
-            );
-        return [hoverAnim, leaveAnim];
+
+        animation.play();
+
+        return animation;
     }
 }
