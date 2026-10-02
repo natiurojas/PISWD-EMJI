@@ -5,7 +5,6 @@ class Sprite extends Node {
     constructor() {
         super();
         this._img = null;
-        this.path = "";
         this.sizeMode = Sprite.STRETCH;
         this._imgSize = new Vector2(0, 0);
         // El tamaño del Node inicialmente es el tamaño original de la imgn.

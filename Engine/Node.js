@@ -462,6 +462,6 @@ class Node {
             root = root.parent;
         }
 
-        return root === Node.root;
+        return root === Game.instance.root;
     }
 }
