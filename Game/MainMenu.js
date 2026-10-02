@@ -6,12 +6,12 @@ class MainMenu extends Scene {
         this.type = "UI";
         this.name = "MainMenu";
     }
-    preload() {
+    static preload() {
         return [
             "./Assets/archivementsBtn.jpeg",
             "./Assets/playBtn.jpeg",
             "./Assets/settingsBtn.jpeg",
-            "./Assets/title.jpeg"
+            "./Assets/title.jpeg",
         ];
     }
     onStart()

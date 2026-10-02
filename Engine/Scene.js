@@ -41,33 +41,49 @@ class Scene extends Node {
     }
 
     // Funcion virtual utilizada para precargar recursos antes de que la escena comience
-    preload() {
+    static preload() {
         return [];
+    }
+
+    static async _preloadResources(resources)
+    {
+        for(let i = 0; i < resources.length; i++)
+        {
+            if(typeof(resources[i]) !== "string" && (resources[i].prototype instanceof Scene))
+            {
+                const resourcesSubscene = resources[i].preload();
+                if(resourcesSubscene.length > 0)
+                {
+                    console.log(`Preloading resources for subscene: ${resources[i].name}`);
+                    Scene._preloadResources(resourcesSubscene);
+                }
+                resources.splice(i, 1);
+            }
+        }
+        await AssetManager.preload(resources);
     }
 
     static async change(scene) {
         if (!(scene instanceof Scene))
-            throw new TypeError(
-                "Scene.change(): scene must be a Scene."
-            );
+            throw new TypeError("Scene.change(): scene must be a Scene.");
         if (Scene.current !== null)
             Scene.current.exit();
-
-        const resources = scene.preload();
+        const resources = scene.constructor.preload();
         if (resources.length > 0) {
             // Mostramos LoadingScene para precargar los recursos
             const loadingScene = new LoadingScene();
             Game.instance.root.UI.addChild(loadingScene);
             loadingScene.enter();
 
-            // Cargamos los recursos de la escena
-            await AssetManager.preload(resources);
+            console.log(`Preloading resources for scene: ${scene.constructor.name}`);
+            await Scene._preloadResources(resources);
             loadingScene.exit();
 
             Scene._addScene(scene);
         }
-        else
+        else {
             Scene._addScene(scene);
+        }
     }
 
     static _addScene(scene) {
@@ -75,9 +91,18 @@ class Scene extends Node {
             Game.instance.root.UI.addChild(scene);
         else if (scene.type === "World")
             Game.instance.root.World.addChild(scene);
-        else
+        else {
             Game.instance.root.addChild(scene);
+        }
         scene.enter();
+    }
+
+    static instantiate(sceneClass, ...args) {
+        if(!(sceneClass.prototype instanceof Scene))
+            throw new TypeError("sceneClass must be a subclass of Scene.");
+        const scene = new sceneClass(...args);
+        scene.enter();
+        return scene;
     }
 
     free() {

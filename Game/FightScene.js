@@ -1,11 +1,12 @@
 class FightScene extends Scene {
 
-    constructor() {
+    constructor(source = null) {
         super();
         this.type = "World";
         this.name = "FightScene";
+        this.source = source;
     }
-    preload() {
+    static preload() {
         return [
             "./Assets/arena.jpeg",
             "./Assets/Nave00.png"
@@ -17,7 +18,7 @@ class FightScene extends Scene {
         arenaSprt.size = new Vector2(Game.instance.width, Game.instance.height);
         this.addChild(arenaSprt);
 
-        let code = `
+        let code = this.source || `
             IMPORTAR "GIRAR"
             IMPORTAR "IMPRIMIR"
 
@@ -49,6 +50,21 @@ class FightScene extends Scene {
         });
         robot.registerModule("IMPRIMIR", (robot, vm) => {
             console.log(`El angulo es: ${vm.getVariable("angulo")}`);
+        });
+
+        // Módulos base del editor de RAssembly. En el juego final estos
+        // módulos pueden depender de las piezas realmente equipadas.
+        robot.registerModule("RADAR", () => {});
+        robot.registerModule("RADAR_DETECTAR", (robot, vm) => {
+            // Demo: alternamos un valor para que el programa pueda probar decisiones.
+            if (vm.hasVariable("enemigo"))
+                vm.setVariable("enemigo", 1);
+        });
+        robot.registerModule("CAÑON_DISPARAR", () => {
+            console.log("RAssembly: ¡Cañón disparado!");
+        });
+        robot.registerModule("ESCUDO_ACTIVAR", () => {
+            console.log("RAssembly: escudo activado.");
         });
         let robotSprt = new Sprite();
         robotSprt.img = AssetManager.images["./Assets/Nave00.png"];
