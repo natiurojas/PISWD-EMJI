@@ -259,11 +259,9 @@ class RAssemblyLexer {
     }
 
     isAlpha(c) {
-        return (
-            (c >= 'a' && c <= 'z') ||
-            (c >= 'A' && c <= 'Z') ||
-            c === '_'
-        );
+        // RAssembly permite identificadores con letras Unicode (por ejemplo Ñ).
+        // Esto resulta útil para módulos y variables en español.
+        return c === '_' || /^[\p{L}]$/u.test(c);
     }
 
     isAlphaNumeric(c) {
