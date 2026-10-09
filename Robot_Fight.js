@@ -5,8 +5,8 @@ function setup() {
     game.init();
     createCanvas(game.width, game.height);
 
-    // Cargamos la escena del MainMenu.
-    Scene.change(new MainMenu());
+    // Cargamos la escena del Login.
+    Scene.change(new LoginScene());
 }
 
 function draw() {
