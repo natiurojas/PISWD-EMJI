@@ -20,7 +20,16 @@ class Label extends Node {
         this.fontPath = fontPath;
         this.fontSize = fontSize;
 
-        this.font = loadFont(fontPath);
+        this.font = AssetManager.getFont(fontPath);
+        if (this.font === null) {
+            AssetManager.loadFont(fontPath)
+            .then(font => {
+                this.font = font;
+                this.mustBeRerendered = true;
+                this.updateSize();
+            })
+            .catch(error => console.error("Label.loadFont():", error));
+        }
 
         this.mustBeRerendered = true;
 
@@ -63,16 +72,9 @@ class Label extends Node {
 
     updateSize() {
         push();
-        if(this.font !== null)
-            textFont(this.font);
-            
-        textSize(this.fontSize);
-
-        this.size = new Vector2(
-            textWidth(this.text),
-            this.fontSize
-        );
-
+        if (this.font !== null) textFont(this.font);
+        textSize(this.fontSize || 12);
+        this.size = new Vector2(textWidth(String(this.text ?? "")), this.fontSize || 12);
         pop();
 
         this.mustBeRerendered = false;
@@ -80,7 +82,6 @@ class Label extends Node {
 
 
     getSize() {
-
         if(this.mustBeRerendered)
             this.updateSize();
 
@@ -92,17 +93,18 @@ class Label extends Node {
         if(this.mustBeRerendered)
             this.updateSize();
 
+        if (!this.visible) return;
         push();
-
+        translate(this.globalPos.x, this.globalPos.y);
+        rotate(radians(this.globalRotation));
+        scale(this.globalScale.x, this.globalScale.y);
         if(this.font !== null)
             textFont(this.font);
-        textSize(this.fontSize);
-
-        textAlign(LEFT, TOP);
-
+        textSize(this.fontSize || 12);
+        textAlign(this.alignX ?? LEFT, this.alignY ?? TOP);
         fill(this.globalColor.r, this.globalColor.g, this.globalColor.b, this.globalColor.a);
         noStroke();
-        text(this.text, 0, 0);
+        text(this.text, 0, 0, this.maxWidth ?? undefined);
         pop();
     }
 }

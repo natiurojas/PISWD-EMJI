@@ -13,13 +13,52 @@ class Sprite extends Node {
     }
 
     set img(image) {
-        this._img = image;
-        this._imgSize = new Vector2(image.width, image.height);
-        this.size = new Vector2(image.width, image.height);
+        if(typeof(image) === "string")
+        {
+            this._img = AssetManager.getImage(image);
+            if(this._img === null)
+            {
+                AssetManager.loadImage(image)
+                .then(loadedImg => {
+                    this._img = loadedImg;
+                    this._imgSize = new Vector2(loadedImg.width, loadedImg.height);
+                    this.size = new Vector2(loadedImg.width, loadedImg.height);
+                })
+                .catch(error => console.error("Sprite.img():", error));
+            }
+            else
+            {
+                this._imgSize = new Vector2(this._img.width, this._img.height);
+                this.size = new Vector2(this._img.width, this._img.height);
+            }
+        }
+        else
+        {
+            this._img = image;
+            this._imgSize = new Vector2(image.width, image.height);
+            this.size = new Vector2(image.width, image.height);
+        }
     }
 
     get imgBuffer() {
         return this._img;
+    }
+
+    async loadImage(image)
+    {
+        this._img = AssetManager.getImage(image);
+        if(this._img === null)
+        {
+            let loadedImg = await AssetManager.loadImage(image);
+            this._img = loadedImg;
+            this._imgSize = new Vector2(loadedImg.width, loadedImg.height);
+            this.size = new Vector2(loadedImg.width, loadedImg.height);
+        }
+        else
+        {
+            this._imgSize = new Vector2(this._img.width, this._img.height);
+            this.size = new Vector2(this._img.width, this._img.height);
+        }
     }
 
     draw() {
