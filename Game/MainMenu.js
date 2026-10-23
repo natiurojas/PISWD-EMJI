@@ -49,11 +49,14 @@ class MainMenu extends Scene {
         RFUI.button(this, "PERSONALIZAR", 215, 389, 167, 45, () => Scene.change(new RobotWorkshopScene()), {
             name: "WorkshopButton", fontSize: 9, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
         });
-        RFUI.button(this, "SALAS", 42, 444, 163, 43, () => Scene.change(new RoomsScene()), {
+        RFUI.button(this, "SALAS", 42, 444, 110, 43, () => Scene.change(new RoomsScene()), {
             name: "RoomsButton", fontSize: 10, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
         });
-        RFUI.button(this, "OPCIONES", 215, 444, 167, 43, () => Scene.change(new SettingsScene()), {
-            name: "SettingsButton", fontSize: 10, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
+        RFUI.button(this, "PUNTUACIONES", 160, 444, 120, 43, () => Scene.change(new ScoresScene()), {
+            name: "ScoresButton", fontSize: 7, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
+        });
+        RFUI.button(this, "OPCIONES", 288, 444, 94, 43, () => Scene.change(new SettingsScene()), {
+            name: "SettingsButton", fontSize: 8, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
         });
         RFUI.label(this, "VERSIÓN ESCOLAR  •  MULTIJUGADOR EN PREPARACIÓN", 43, 511, 7, RFUI.COLORS.muted);
         RFUI.label(this, "RAssembly convierte tus bloques en decisiones de combate.", 43, 530, 8, RFUI.COLORS.muted);
