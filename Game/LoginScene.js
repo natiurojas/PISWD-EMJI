@@ -22,40 +22,43 @@ class LoginScene extends Scene {
     }
 
     static preload() {
-        return [];
+        return [
+            "./Assets/dialog.png", "./Assets/Ratcon/greet.png", "./Assets/Ratcon/happy.png",
+            "./Assets/Ratcon/point_right.png", "./Assets/Fonts/Minecraft.ttf"
+        ];
     }
 
     onStart() {
-        // Fondo
-        const bg = new Panel();
-        bg.name = "bg";
-        bg.pos = new Vector2(0, 0);
-        bg.size = new Vector2(Game.instance.width, Game.instance.height);
-        bg.color = new Color("#01141A");
-        this.addChild(bg);
+        // Presentación inicial con la identidad visual del juego.
+        this.addChild(new RobotFightBackdrop());
+        RFUI.panel(this, 0, 0, Game.instance.width, 7, RFUI.COLORS.cyan, RFUI.COLORS.cyan, 0, "TopAccent");
+        RFUI.label(this, "R/F  //  ROBOT COMBAT LAB", 30, 22, 9, RFUI.COLORS.cyan);
+        RFUI.label(this, "PRIMER INGRESO DE PILOTO", 30, 39, 7, RFUI.COLORS.muted);
 
         // Título
         const title = new Label();
         title.name = "Title";
         title.text = "CREAR USUARIO";
-        title.fontSize = 40;
-        title.color = new Color("white");
+        title.fontSize = 29;
+        title.color = new Color(RFUI.COLORS.white);
+        title.loadFont(RFUI.FONT, title.fontSize);
         title.updateSize();
         title.pos = new Vector2(
             (Game.instance.width - title.size.x) / 2,
-            120
+            105
         );
         this.addChild(title);
 
         const subtitle = new Label();
         subtitle.name = "Subtitle";
         subtitle.text = "Ingresa un nombre para comenzar";
-        subtitle.fontSize = 18;
-        subtitle.color = new Color("#39E6D0");
+        subtitle.fontSize = 11;
+        subtitle.color = new Color(RFUI.COLORS.cyan);
+        subtitle.loadFont(RFUI.FONT, subtitle.fontSize);
         subtitle.updateSize();
         subtitle.pos = new Vector2(
             (Game.instance.width - subtitle.size.x) / 2,
-            180
+            151
         );
         this.addChild(subtitle);
 
@@ -64,8 +67,8 @@ class LoginScene extends Scene {
         box.name = "InputBox";
         box.pos = new Vector2(200, 250);
         box.size = new Vector2(400, 64);
-        box.color = new Color("#0A2A33");
-        box.borderColor = new Color("#39E6D0");
+        box.color = new Color("#0C2333");
+        box.borderColor = new Color(RFUI.COLORS.cyan);
         box.borderSize = 3;
         this.addChild(box);
 
@@ -82,7 +85,7 @@ class LoginScene extends Scene {
         this.cursor.name = "Cursor";
         this.cursor.size = new Vector2(3, 34);
         this.cursor.pos = new Vector2(18, 15);
-        this.cursor.color = new Color("#39E6D0");
+        this.cursor.color = new Color(RFUI.COLORS.cyan);
         box.addChild(this.cursor);
 
         // Mensaje de estado
@@ -102,12 +105,22 @@ class LoginScene extends Scene {
         this.createBtn.onReleased = () => this.confirm();
         this.addChild(this.createBtn);
 
+        // Ratcon presenta el objetivo del juego mientras creás tu perfil.
+        this.ratcon = new RatconDialogBox(
+            "Hola! Soy Ratcon. Aca vas a construir una nave y programar su estrategia para combatir.",
+            "greet",
+            { width: 155, height: 83, bubbleOffset: 47, mascotScale: 0.15, textSize: 7 }
+        );
+        this.ratcon.pos = new Vector2(7, 369);
+        this.addChild(this.ratcon);
+        RFUI.label(this, "CREÁ TU PERFIL PARA EMPEZAR", 28, 347, 7, RFUI.COLORS.cyan);
+
         // Si ya existe un usuario, precargamos su nombre.
         const existing = User.load();
         if (existing !== null) {
             this.username = existing.name;
             this.updateInput();
-            this.message.color = new Color("#39E6D0");
+            this.message.color = new Color(RFUI.COLORS.cyan);
             this.message.setText(`Ya existe un usuario: ${existing.name}`);
             this.createBtn.getChildByName("BtnLabel").setText("Guardar");
         }
@@ -129,14 +142,14 @@ class LoginScene extends Scene {
         const panel = new Panel();
         panel.name = "BtnPanel";
         panel.size = btn.size.clone();
-        panel.color = new Color("#39E6D0");
+        panel.color = new Color(RFUI.COLORS.cyan);
         btn.addChild(panel);
 
         const label = new Label();
         label.name = "BtnLabel";
         label.text = text;
         label.fontSize = 28;
-        label.color = new Color("#01141A");
+        label.color = new Color("#07111F");
         label.updateSize();
         label.pos = new Vector2(
             (btn.size.x - label.size.x) / 2,
@@ -148,7 +161,7 @@ class LoginScene extends Scene {
             panel.color = new Color("#7CF3E4");
         };
         btn.onLeave = () => {
-            panel.color = new Color("#39E6D0");
+            panel.color = new Color(RFUI.COLORS.cyan);
         };
 
         return btn;
@@ -206,7 +219,7 @@ class LoginScene extends Scene {
 
         Game.instance.user = user;
 
-        this.message.color = new Color("#39E6D0");
+        this.message.color = new Color(RFUI.COLORS.cyan);
         this.message.setText(
             saved
                 ? `Usuario '${user.name}' guardado`

@@ -41,6 +41,13 @@ class FightScene extends Scene {
         robotNode.pos = new Vector2(100, 100);
         let robot = new RAssemblyRobot(code);
         robot.compile();
+        // La CPU equipada decide cuántas instrucciones RAssembly ejecuta por frame.
+        if (typeof RobotLoadout !== "undefined") {
+            const loadout = RobotLoadout.load();
+            robot.loadout = loadout;
+            robot.robotStats = RobotLoadout.stats(loadout);
+            robot.vm.instructionsPerFrame = Math.max(1, robot.robotStats.cpu);
+        }
         robot.registerModule("GIRAR", (vm) => {
             const angulo = vm.getVariable("angulo");
             const radio = vm.getVariable("radio");

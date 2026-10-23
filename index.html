@@ -17,15 +17,25 @@
   <script language="javascript" type="text/javascript" src="Engine/Animation.js"></script>
   <script language="javascript" type="text/javascript" src="UI/Button.js"></script>
   <script language="javascript" type="text/javascript" src="UI/Label.js"></script>
+  <script language="javascript" type="text/javascript" src="UI/TextField.js"></script>
   <script language="javascript" type="text/javascript" src="UI/Panel.js"></script>
+  <script language="javascript" type="text/javascript" src="UI/NinePatch.js"></script>
   <script language="javascript" type="text/javascript" src="Engine/Sprite.js"></script>
   <script language="javascript" type="text/javascript" src="Engine/Game.js"></script>
-  <script language="javascript" type="text/javascript" src="Game/User.js"></script>
+  <!-- Componentes y utilidades visuales de Robot Fight -->
+  <script language="javascript" type="text/javascript" src="Game/RobotUI.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/RatconDialog.js"></script>
   <!-- Escenas -->
   <script language="javascript" type="text/javascript" src="Game/LoadingScene.js"></script>
   <script language="javascript" type="text/javascript" src="Game/LoginScene.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/User.js"></script>
   <script language="javascript" type="text/javascript" src="Game/MainMenu.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/RobotWorkshopScene.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/RoomsScene.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/SettingsScene.js"></script>
   <script language="javascript" type="text/javascript" src="Game/FightScene.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/RAssemblyUI.js"></script>
+  <script language="javascript" type="text/javascript" src="Game/RAssemblyEditor.js"></script>
   <!-- Lenguaje de RAssembly -->
   <script language="javascript" type="text/javascript" src="RAssembly/RAssemblyLexer.js"></script>
   <script language="javascript" type="text/javascript" src="RAssembly/RAssemblyParser.js"></script>
@@ -35,10 +45,13 @@
   <!-- OK, YOU CAN MAKE CHANGES BELOW THIS LINE AGAIN -->
 
   <style>
-    body {
+    html, body {
       padding: 0;
       margin: 0;
+      background: #07111F;
+      overflow: hidden;
     }
+    canvas { display: block; image-rendering: pixelated; }
   </style>
 </head>
 
