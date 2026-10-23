@@ -8,6 +8,8 @@ class LoginScene extends Scene {
         this.username = "";
         this.maxLength = 14;
 
+        this.title = null;
+        this.subtitle = null;
         this.label = null;
         this.cursor = null;
         this.message = null;
@@ -36,31 +38,31 @@ class LoginScene extends Scene {
         RFUI.label(this, "PRIMER INGRESO DE PILOTO", 30, 39, 7, RFUI.COLORS.muted);
 
         // Título
-        const title = new Label();
-        title.name = "Title";
-        title.text = "CREAR USUARIO";
-        title.fontSize = 29;
-        title.color = new Color(RFUI.COLORS.white);
-        title.loadFont(RFUI.FONT, title.fontSize);
-        title.updateSize();
-        title.pos = new Vector2(
-            (Game.instance.width - title.size.x) / 2,
+        this.title = new Label();
+        this.title.name = "Title";
+        this.title.text = "CREAR USUARIO";
+        this.title.fontSize = 29;
+        this.title.color = new Color(RFUI.COLORS.white);
+        this.title.loadFont(RFUI.FONT, this.title.fontSize);
+        this.title.updateSize();
+        this.title.pos = new Vector2(
+            (Game.instance.width - this.title.size.x) / 2,
             105
         );
-        this.addChild(title);
+        this.addChild(this.title);
 
-        const subtitle = new Label();
-        subtitle.name = "Subtitle";
-        subtitle.text = "Ingresa un nombre para comenzar";
-        subtitle.fontSize = 11;
-        subtitle.color = new Color(RFUI.COLORS.cyan);
-        subtitle.loadFont(RFUI.FONT, subtitle.fontSize);
-        subtitle.updateSize();
-        subtitle.pos = new Vector2(
-            (Game.instance.width - subtitle.size.x) / 2,
+        this.subtitle = new Label();
+        this.subtitle.name = "Subtitle";
+        this.subtitle.text = "Escribí un nombre para comenzar";
+        this.subtitle.fontSize = 11;
+        this.subtitle.color = new Color(RFUI.COLORS.cyan);
+        this.subtitle.loadFont(RFUI.FONT, this.subtitle.fontSize);
+        this.subtitle.updateSize();
+        this.subtitle.pos = new Vector2(
+            (Game.instance.width - this.subtitle.size.x) / 2,
             151
         );
-        this.addChild(subtitle);
+        this.addChild(this.subtitle);
 
         // Caja de texto
         const box = new Panel();
@@ -115,14 +117,14 @@ class LoginScene extends Scene {
         this.addChild(this.ratcon);
         RFUI.label(this, "CREÁ TU PERFIL PARA EMPEZAR", 28, 347, 7, RFUI.COLORS.cyan);
 
-        // Si ya existe un usuario, precargamos su nombre.
+        // Si ya existe un usuario, precargamos su nombre para iniciar sesión.
         const existing = User.load();
         if (existing !== null) {
             this.username = existing.name;
             this.updateInput();
-            this.message.color = new Color(RFUI.COLORS.cyan);
-            this.message.setText(`Ya existe un usuario: ${existing.name}`);
-            this.createBtn.getChildByName("BtnLabel").setText("Guardar");
+        }
+        else {
+            this.refreshMode();
         }
 
         // Entrada de teclado.
@@ -167,6 +169,46 @@ class LoginScene extends Scene {
         return btn;
     }
 
+    centerLabel(label, y) {
+        label.updateSize();
+        label.pos = new Vector2(
+            (Game.instance.width - label.size.x) / 2,
+            y
+        );
+    }
+
+    refreshMode() {
+        const name = this.username.trim();
+        const existing = name.length > 0 ? User.find(name) : null;
+        const btnLabel = this.createBtn.getChildByName("BtnLabel");
+
+        if (existing !== null) {
+            this.title.setText("INICIAR SESIÓN");
+            this.subtitle.setText("Usuario encontrado. Presioná Enter.");
+            btnLabel.setText("Entrar");
+            this.message.color = new Color(RFUI.COLORS.cyan);
+            this.message.setText(
+                `Récord de ${existing.name}: ${existing.highScore}`
+            );
+        }
+        else if (name.length > 0) {
+            this.title.setText("CREAR USUARIO");
+            this.subtitle.setText("Ese nombre está disponible.");
+            btnLabel.setText("Crear");
+            this.message.color = new Color(RFUI.COLORS.cyan);
+            this.message.setText("El usuario se guardará al confirmar.");
+        }
+        else {
+            this.title.setText("CREAR USUARIO");
+            this.subtitle.setText("Escribí un nombre para comenzar");
+            btnLabel.setText("Crear");
+            this.message.setText("");
+        }
+
+        this.centerLabel(this.title, 105);
+        this.centerLabel(this.subtitle, 151);
+    }
+
     onKeyDown(keyCode) {
         if (this.pendingChange)
             return;
@@ -187,7 +229,6 @@ class LoginScene extends Scene {
             this.username += key;
         }
 
-        this.message.setText("");
         this.updateInput();
     }
 
@@ -200,6 +241,9 @@ class LoginScene extends Scene {
         );
         this.cursor.visible = true;
         this.blinkTimer = 0;
+
+        if (this.createBtn !== null)
+            this.refreshMode();
     }
 
     confirm() {
@@ -214,16 +258,22 @@ class LoginScene extends Scene {
             return;
         }
 
-        const user = new User(name);
-        const saved = User.save(user);
+        const existing = User.find(name);
+        const user = User.login(name);
+
+        if (user === null || !User.save(user)) {
+            this.message.color = new Color("red");
+            this.message.setText("No se pudo guardar el usuario");
+            return;
+        }
 
         Game.instance.user = user;
 
         this.message.color = new Color(RFUI.COLORS.cyan);
         this.message.setText(
-            saved
-                ? `Usuario '${user.name}' guardado`
-                : `Usuario '${user.name}' creado`
+            existing !== null
+                ? `Bienvenido, ${user.name}. Récord: ${user.highScore}`
+                : `Usuario '${user.name}' creado y guardado`
         );
 
         this.pendingChange = true;
