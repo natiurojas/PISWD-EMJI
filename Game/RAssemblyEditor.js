@@ -1,8 +1,12 @@
 class RAssemblyEditor extends Scene {
-    constructor() {
+    constructor(levelId = null) {
         super();
         this.type = "UI";
         this.name = "RAssemblyEditor";
+        this.levelId = levelId;
+        this.level = levelId !== null && typeof GameLevels !== "undefined"
+            ? GameLevels.get(levelId)
+            : null;
         this.blocks = [];
         this.needsRebuild = true;
         this.blockView = null;
@@ -114,13 +118,13 @@ class RAssemblyEditor extends Scene {
             if (this.pointIn(mx, my, 730, 544, 42, 28)) { this.guideVisible = false; return; }
         }
         if (this.pointIn(mx, my, 10, 10, 90, 28)) {
-            Scene.change(new MainMenu()); return;
+            Scene.change(this.levelId ? new LevelsScene() : new MainMenu()); return;
         }
         if (this.pointIn(mx, my, 592, 10, 82, 28)) { this.compileProgram(); return; }
         if (this.pointIn(mx, my, 682, 10, 104, 28)) {
             this.compileProgram();
             if (!this.status.startsWith("✕"))
-                Scene.change(new FightScene(this.generateSource()));
+                Scene.change(new FightScene(this.generateSource(), this.levelId));
             return;
         }
         if (this.pointIn(mx, my, 12, 75, 166, 32)) {
@@ -421,6 +425,7 @@ class RAssemblyEditor extends Scene {
         this.addChild(new RAssemblyPanel("top_bar", 0, 0, 800, 46, "#162936"));
         this.addChild(new RAssemblyPanel("top_bar_line", 0, 42, 800, 4, "#3b5265"));
         this.addChild(new RAssemblyLabel("title", "R//ASSEMBLY LAB", 118, 17, 17, "#27c9b5"));
+        this.addChild(new RAssemblyLabel("level_top", this.level ? this.level.name : "EDITOR LIBRE", 296, 19, 8, this.level ? this.level.color : "#bed7e0", 104));
         this.addChild(new RAssemblyButton("back", "<- MENU", 10, 10, 90, 28, "#3b5265"));
         this.addChild(new RAssemblyButton("compile", "COMPILAR", 592, 10, 82, 28, "#27c9b5"));
         this.addChild(new RAssemblyButton("test", "PROBAR", 682, 10, 104, 28, "#3b5265"));

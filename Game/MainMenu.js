@@ -49,8 +49,8 @@ class MainMenu extends Scene {
         RFUI.button(this, "PERSONALIZAR", 215, 389, 167, 45, () => Scene.change(new RobotWorkshopScene()), {
             name: "WorkshopButton", fontSize: 9, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
         });
-        RFUI.button(this, "SALAS", 42, 444, 110, 43, () => Scene.change(new RoomsScene()), {
-            name: "RoomsButton", fontSize: 10, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
+        RFUI.button(this, "NIVELES", 42, 444, 110, 43, () => Scene.change(new LevelsScene()), {
+            name: "LevelsButton", fontSize: 10, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
         });
         RFUI.button(this, "PUNTUACIONES", 160, 444, 120, 43, () => Scene.change(new ScoresScene()), {
             name: "ScoresButton", fontSize: 7, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
