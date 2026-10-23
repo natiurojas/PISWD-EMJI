@@ -132,10 +132,10 @@ class FightScene extends Scene {
 
             VAR enemigo = 0
 
-            DETECTAR_ENEMIGO
+            LLAMAR DETECTAR_ENEMIGO
 
             SI enemigo == 1 ENTONCES
-                DISPARAR
+                LLAMAR DISPARAR
             FIN
         `;
 
