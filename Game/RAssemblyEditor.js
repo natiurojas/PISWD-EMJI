@@ -34,7 +34,7 @@ class RAssemblyEditor extends Scene {
         this.maxLines = robotStats.blocks;
         this.maxVariables = robotStats.vars;
         this.cpu = robotStats.cpu;
-        this.robotName = "RF-01";
+        this.robotName = this.loadout ? RobotLoadout.name(this.loadout) : "RF-01";
         this.robotStats = robotStats;
         this.palette = {
             FLUJO: [

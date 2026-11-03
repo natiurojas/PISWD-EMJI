@@ -24,6 +24,10 @@ class FightScene extends Scene {
         this.enemyFireTimer = 1.4;
         this.damageDealt = 0;
         this.score = 0;
+        this.manual = false;
+        this.remote = typeof MobileController !== "undefined"
+            ? MobileController.shared()
+            : null;
     }
 
     static preload() {
@@ -52,6 +56,10 @@ class FightScene extends Scene {
                 shield: 2,
                 cpu: 10
             };
+
+        this.robotName = typeof RobotLoadout !== "undefined"
+            ? RobotLoadout.name(loadout)
+            : "RF-01";
 
         this.playerMaxHp = this.stats.hp;
         this.playerHp = this.playerMaxHp;
@@ -179,7 +187,7 @@ class FightScene extends Scene {
             { align: CENTER, width: 600 }
         );
 
-        RFUI.label(this, "RF-01", 28, 8, 8, RFUI.COLORS.white);
+        RFUI.label(this, this.robotName, 28, 8, 8, RFUI.COLORS.white, { maxWidth: 150 });
         this.playerHpLabel = RFUI.label(
             this,
             "",
@@ -281,6 +289,16 @@ class FightScene extends Scene {
         );
 
         this.updateHud();
+
+        this.controlLabel = RFUI.label(
+            this,
+            "",
+            772,
+            63,
+            7,
+            RFUI.COLORS.cyan,
+            { align: RIGHT, width: 240 }
+        );
     }
 
     createLaser(name, color) {
@@ -361,6 +379,68 @@ class FightScene extends Scene {
         this.playerEvasionTimer = Math.max(this.playerEvasionTimer, 1.2);
     }
 
+    updateManualControl(dt) {
+        if (!this.remote)
+            return;
+
+        const control = this.remote.control;
+        let x = control.x;
+        let y = control.y;
+        const magnitude = Math.hypot(x, y);
+
+        if (magnitude < 0.12) {
+            x = 0;
+            y = 0;
+        }
+        else if (magnitude > 1) {
+            x /= magnitude;
+            y /= magnitude;
+        }
+
+        const speed = Math.max(130, this.stats.speed * 55);
+
+        if (x !== 0 || y !== 0) {
+            this.playerX += x * speed * dt;
+            this.playerY += y * speed * dt;
+            this.playerEvasionTimer = Math.max(this.playerEvasionTimer, 0.2);
+        }
+
+        const maxX = Math.max(20, Game.instance.width - this.playerWidth - 20);
+        const maxY = Math.max(90, Game.instance.height - this.playerHeight - 10);
+
+        this.playerX = Math.max(20, Math.min(maxX, this.playerX));
+        this.playerY = Math.max(90, Math.min(maxY, this.playerY));
+
+        if (control.fire)
+            this.playerShoot();
+
+        if (control.shield)
+            this.activateShield();
+    }
+
+    publishState(force = false) {
+        if (this.remote === null)
+            return;
+
+        this.remote.publish({
+            scene: "fight",
+            level: this.level.name,
+            robot: this.robotName,
+            playerHp: this.playerHp,
+            playerMaxHp: this.playerMaxHp,
+            enemyHp: this.enemyHp,
+            enemyMaxHp: this.enemyMaxHp,
+            shield: this.playerShieldTimer,
+            shieldCooldown: this.playerShieldCooldown,
+            fireCooldown: this.playerFireCooldown,
+            manual: this.manual,
+            finished: this.finished,
+            victory: this.victory,
+            score: this.score,
+            time: this.time
+        }, force);
+    }
+
     enemyShoot() {
         if (this.finished)
             return;
@@ -432,15 +512,24 @@ class FightScene extends Scene {
         this.playerLaserTimer = Math.max(0, this.playerLaserTimer - dt);
         this.enemyLaserTimer = Math.max(0, this.enemyLaserTimer - dt);
 
-        if (this.playerMoveTimer > 0) {
-            const targetX = Math.max(90, Math.min(360, this.enemyX - 110));
-            const direction = Math.sign(targetX - this.playerX);
+        this.manual = this.remote !== null && this.remote.manual;
 
-            this.playerX += direction * this.stats.speed * 22 * dt;
+        if (this.playerMoveTimer > 0)
             this.playerMoveTimer -= dt;
+
+        if (this.manual)
+            this.updateManualControl(dt);
+        else {
+            if (this.playerMoveTimer > 0) {
+                const targetX = Math.max(90, Math.min(360, this.enemyX - 110));
+                const direction = Math.sign(targetX - this.playerX);
+
+                this.playerX += direction * this.stats.speed * 22 * dt;
+            }
+
+            this.playerY = 300 + Math.sin(this.time * 1.8) * 20;
         }
 
-        this.playerY = 300 + Math.sin(this.time * 1.8) * 20;
         this.enemyY = 280 + Math.sin(this.time * 2.2 + 1) * 70;
 
         const desiredEnemyX = Math.max(260, Math.min(620, this.playerX + 180));
@@ -468,11 +557,13 @@ class FightScene extends Scene {
         if (this.enemyLaserTimer <= 0)
             this.enemyLaser.visible = false;
 
-        this.runProgram();
+        if (!this.manual)
+            this.runProgram();
 
         if (this.finished)
             return;
 
+        this.publishState();
         this.updateHud();
     }
 
@@ -535,6 +626,15 @@ class FightScene extends Scene {
             this.shieldLabel.setText(`ESCUDO RECARGANDO  ${this.playerShieldCooldown.toFixed(1)}s`);
         else
             this.shieldLabel.setText("");
+
+        if (this.controlLabel) {
+            if (this.manual)
+                this.controlLabel.setText("MANDO: CELULAR");
+            else if (this.remote && this.remote.hasController)
+                this.controlLabel.setText("MANDO: SIN SEÑAL");
+            else
+                this.controlLabel.setText("");
+        }
     }
 
     finish(victory) {
@@ -566,7 +666,15 @@ class FightScene extends Scene {
         if (typeof User !== "undefined")
             User.recordScore(this.score);
 
+        this.publishState(true);
         this.showResult();
+    }
+
+    exit() {
+        if (this.remote !== null)
+            this.remote.publish({ scene: "idle" }, true);
+
+        super.exit();
     }
 
     showResult() {

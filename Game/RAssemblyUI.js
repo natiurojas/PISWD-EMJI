@@ -63,6 +63,13 @@ class RAssemblyBlockView extends Scene {
         this.colors = this.depthColors[depth % this.depthColors.length];
     }
 
+    // Los bloques son nodos internos del editor: no deben reemplazar la escena activa.
+    enter() {
+        this.updateTransform();
+        this.updateGlobalColor();
+        this.start();
+    }
+
     onStart() {
         const editor = this.editor;
         const block = this.block;

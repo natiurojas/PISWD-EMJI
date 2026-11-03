@@ -4,6 +4,9 @@ class RobotWorkshopScene extends Scene {
         this.name = "RobotWorkshopScene";
         this.type = "UI";
         this.loadout = RobotLoadout.load();
+        this.robotName = RobotLoadout.name(this.loadout);
+        this.nameField = null;
+        this.keyDownListener = null;
         this.activeCategory = "chassis";
         this.statusText = "Elegí cada módulo y guardá tu configuración.";
         this.optionButtons = [];
@@ -26,6 +29,18 @@ class RobotWorkshopScene extends Scene {
         RFUI.label(this, "COMPONENTES", 37, 116, 9, RFUI.COLORS.cyan);
         RFUI.label(this, "CONFIGURACIÓN", 225, 116, 9, RFUI.COLORS.cyan);
         RFUI.label(this, "VISTA PREVIA", 507, 116, 9, RFUI.COLORS.cyan);
+        this.robotNameLabel = RFUI.label(
+            this,
+            `UNIDAD // ${this.robotName}`,
+            507,
+            133,
+            8,
+            RFUI.COLORS.cyan,
+            { maxWidth: 142 }
+        );
+        RFUI.button(this, "RENOMBRAR", 652, 130, 112, 24, () => this.openNameEditor(), {
+            name: "RenameRobotButton", fontSize: 7, color: "#102B3B", hoverColor: "#174556"
+        });
 
         const categoryList = [
             ["cpu", "CPU"], ["ram", "RAM"], ["chassis", "CHASIS"],
@@ -83,8 +98,61 @@ class RobotWorkshopScene extends Scene {
             fontSize: 7, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
         });
 
+        this.nameField = new TextField(this.robotName, {
+            x: 498,
+            y: 226,
+            width: 270,
+            height: 96,
+            maxLength: 14,
+            label: "NOMBRE DEL ROBOT",
+            placeholder: "RF-01"
+        });
+        this.nameField.name = "RobotNameField";
+        this.addChild(this.nameField);
+
+        this.keyDownListener = (code) => this.onKeyDown(code);
+        Game.instance.keyManager.addEventListener(this.keyDownListener, "DOWN");
+
         this.renderOptions();
         this.updateStats();
+    }
+
+    openNameEditor() {
+        if (!this.nameField) return;
+        // Abrimos vacío para no encadenar el nombre nuevo al anterior;
+        // el nombre actual queda como referencia en el placeholder.
+        this.nameField.placeholder = this.robotName;
+        this.nameField.open("", "NOMBRE DEL ROBOT", value => this.applyRobotName(value));
+        this.nameField.onCancel = () => {
+            this.statusText = "Nombre sin cambios.";
+            this.status.color = new Color(RFUI.COLORS.muted);
+            this.status.setText(this.statusText);
+        };
+        this.statusText = "Escribí el nombre de tu robot. ENTER para guardar, ESC para cancelar.";
+        this.status.color = new Color(RFUI.COLORS.cyan);
+        this.status.setText(this.statusText);
+    }
+
+    onKeyDown(code) {
+        if (!this.nameField || !this.nameField.active) return;
+        const handled = this.nameField.keyPressed(code, key);
+        if (!handled && typeof key === "string" && key.length === 1 && /[a-zA-Z0-9_ -]/.test(key))
+            this.nameField.inputCharacter(key);
+    }
+
+    applyRobotName(value) {
+        const trimmed = typeof value === "string" ? value.trim() : "";
+        // Si se confirma vacío, conservamos el nombre que ya tenía la unidad.
+        this.loadout.name = RobotLoadout.sanitizeName(trimmed || this.robotName);
+        this.robotName = this.loadout.name;
+        const saved = RobotLoadout.save(this.loadout);
+        if (this.robotNameLabel)
+            this.robotNameLabel.setText(`UNIDAD // ${this.robotName}`);
+        this.statusText = saved
+            ? `Nombre guardado: ${this.robotName}.`
+            : "No se pudo guardar el nombre; revisá el almacenamiento del navegador.";
+        this.status.color = new Color(saved ? RFUI.COLORS.green : RFUI.COLORS.red);
+        this.status.setText(this.statusText);
     }
 
     renderOptions() {
@@ -132,7 +200,7 @@ class RobotWorkshopScene extends Scene {
         const stats = RobotLoadout.stats(this.loadout);
         const format = {
             hp: `${stats.hp} HP`, armor: `${stats.armor}`, speed: stats.speed.toFixed(1),
-            weight: `${stats.weight} u`, damage: `${stats.damage}`, radar: `${stats.radar} u`,
+            weight: `${stats.weight.toFixed(1)} u`, damage: `${stats.damage}`, radar: `${stats.radar} u`,
             cpu: `${stats.cpu} c/t`, blocks: `${stats.blocks} bloques`, shield: `${stats.shield} s`
         };
         Object.entries(format).forEach(([key, value]) => this.statLabels[key].setText(value));
@@ -140,6 +208,11 @@ class RobotWorkshopScene extends Scene {
     }
 
     saveLoadout() {
+        if (this.nameField && this.nameField.active) {
+            this.nameField.close();
+            this.applyRobotName(this.nameField.value);
+            return;
+        }
         const saved = RobotLoadout.save(this.loadout);
         this.statusText = saved ? "Configuración guardada en este navegador." : "No se pudo guardar; revisá el almacenamiento del navegador.";
         this.status.color = new Color(saved ? RFUI.COLORS.green : RFUI.COLORS.red);
@@ -149,5 +222,13 @@ class RobotWorkshopScene extends Scene {
     saveAndReturn() {
         this.saveLoadout();
         Scene.change(new MainMenu());
+    }
+
+    exit() {
+        if (this.keyDownListener !== null) {
+            Game.instance.keyManager.removeEventListener(this.keyDownListener, "DOWN");
+            this.keyDownListener = null;
+        }
+        super.exit();
     }
 }

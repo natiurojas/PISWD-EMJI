@@ -63,7 +63,9 @@ class MainMenu extends Scene {
 
         // Tarjeta ilustrada de la nave.
         RFUI.panel(this, 420, 91, 335, 286, "#091A29", "#1D465B", 1, "ShipShowcase");
-        RFUI.label(this, "UNIDAD DE PRUEBA // RF-01", 438, 108, 8, RFUI.COLORS.cyan);
+        const loadout = typeof RobotLoadout !== "undefined" ? RobotLoadout.load() : null;
+        const robotName = loadout ? RobotLoadout.name(loadout) : "RF-01";
+        RFUI.label(this, `UNIDAD // ${robotName}`, 438, 108, 8, RFUI.COLORS.cyan, { maxWidth: 190 });
         RFUI.label(this, "CHASIS MODULAR", 438, 126, 7, RFUI.COLORS.muted);
         const ship = new Sprite();
         ship.name = "ShipPreview";
