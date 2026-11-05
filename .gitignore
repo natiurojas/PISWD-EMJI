@@ -1,0 +1,6 @@
+# Configuración local del chat con IA (nunca subir al repositorio)
+chat.config.json
+chat.config.local.json
+.env
+
+node_modules/

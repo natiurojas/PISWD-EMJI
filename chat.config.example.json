@@ -1,0 +1,13 @@
+{
+  "provider": "openai",
+  "apiKey": "",
+  "baseUrl": "",
+  "model": "",
+  "temperature": 0.4,
+  "maxTokens": 500,
+  "timeoutMs": 30000,
+  "rateLimit": {
+    "requests": 15,
+    "windowMs": 60000
+  }
+}
