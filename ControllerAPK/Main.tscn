@@ -1,0 +1,78 @@
+[gd_scene format=3 uid="uid://c1alo3c5po4hk"]
+
+[ext_resource type="PackedScene" uid="uid://21j6rllgfq33" path="res://JoyStick.tscn" id="1_glv2v"]
+[ext_resource type="PackedScene" uid="uid://b8g22800r8cs3" path="res://Controller.tscn" id="2_uu6xs"]
+
+[node name="Control" type="Control" unique_id=171505276]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="JoyStick" parent="." unique_id=1037076871 instance=ExtResource("1_glv2v")]
+layout_mode = 0
+offset_left = 75.0
+offset_top = 313.0
+offset_right = 75.0
+offset_bottom = 313.0
+
+[node name="Button" type="Button" parent="." unique_id=1280404028]
+layout_mode = 0
+offset_left = 812.0
+offset_top = 217.0
+offset_right = 1047.0
+offset_bottom = 311.0
+
+[node name="Label" type="Label" parent="Button" unique_id=31742306]
+modulate = Color(1, 0, 0, 1)
+layout_mode = 0
+offset_left = 30.0
+offset_top = 20.0
+offset_right = 196.0
+offset_bottom = 75.0
+theme_override_font_sizes/font_size = 40
+text = "Disparar"
+max_lines_visible = 1
+
+[node name="Button 2" type="Button" parent="." unique_id=1222794060]
+layout_mode = 0
+offset_left = 814.0
+offset_top = 421.0
+offset_right = 1050.0
+offset_bottom = 520.0
+
+[node name="Label2" type="Label" parent="Button 2" unique_id=1266883589]
+modulate = Color(0, 0, 1, 1)
+layout_mode = 0
+offset_left = 51.0
+offset_top = 23.0
+offset_right = 187.0
+offset_bottom = 78.0
+theme_override_font_sizes/font_size = 40
+text = "Escudo"
+
+[node name="Control" parent="." unique_id=766715518 instance=ExtResource("2_uu6xs")]
+layout_mode = 1
+offset_left = -51.0
+offset_top = 42.0
+offset_right = -1203.0
+offset_bottom = -542.0
+mouse_filter = 2
+
+[node name="TextEdit" parent="Control" index="0" unique_id=1636368144]
+mouse_behavior_recursive = 2
+
+[node name="Button" parent="Control" index="3" unique_id=1450884803]
+mouse_behavior_recursive = 2
+
+[connection signal="onStopMotion" from="JoyStick" to="Control" method="_on_joy_stick_on_stop_motion"]
+[connection signal="onUpdateJoystick" from="JoyStick" to="Control" method="_on_joy_stick_on_update_joystick"]
+[connection signal="button_down" from="Button" to="Control" method="_on_button_button_down"]
+[connection signal="button_up" from="Button" to="Control" method="_on_button_button_up"]
+[connection signal="button_down" from="Button 2" to="Control" method="_on_button_2_button_down"]
+[connection signal="button_up" from="Button 2" to="Control" method="_on_button_2_button_up"]
+[connection signal="pressed" from="Control/Button" to="Control" method="_on_button_pressed"]
+
+[editable path="Control"]
