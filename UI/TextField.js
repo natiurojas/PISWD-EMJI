@@ -8,6 +8,7 @@ class TextField extends Node {
         this.label = options.label || "EDITAR VALOR";
         this.maxLength = options.maxLength || 48;
         this.active = false;
+        this.cursor = this.value.length;
         this.onSubmit = null;
         this.onCancel = null;
         this.pos = new Vector2(options.x ?? 250, options.y ?? 220);
@@ -15,6 +16,7 @@ class TextField extends Node {
     }
     open(value = this.value, label = this.label, onSubmit = null) {
         this.value = String(value);
+        this.cursor = this.value.length;
         this.label = label;
         this.onSubmit = onSubmit;
         this.active = true;
@@ -22,12 +24,17 @@ class TextField extends Node {
     close() { this.active = false; }
     inputCharacter(character) {
         if (!this.active || !character || character.length !== 1) return;
-        if (character >= " " && character !== "\u007f" && this.value.length < this.maxLength)
-            this.value += character;
+        if (character >= " " && character !== "\u007f" && this.value.length < this.maxLength) {
+            this.value = this.value.slice(0, this.cursor) + character + this.value.slice(this.cursor);
+            this.cursor++;
+        }
     }
     keyPressed(code, key) {
         if (!this.active) return false;
-        if (code === 8) { this.value = this.value.slice(0, -1); return true; }
+        if (code === 8) { if (this.cursor > 0) { this.value = this.value.slice(0, this.cursor - 1) + this.value.slice(this.cursor); this.cursor--; } return true; }
+        if (code === 46) { this.value = this.value.slice(0, this.cursor) + this.value.slice(this.cursor + 1); return true; }
+        if (code === 37) { this.cursor = Math.max(0, this.cursor - 1); return true; }
+        if (code === 39) { this.cursor = Math.min(this.value.length, this.cursor + 1); return true; }
         if (code === 13) { const submit = this.onSubmit; const value = this.value; this.close(); if (submit) submit(value); return true; }
         if (code === 27) { const cancel = this.onCancel; this.close(); if (cancel) cancel(); return true; }
         return false;
@@ -42,6 +49,8 @@ class TextField extends Node {
         noFill(); stroke("#27c9b5"); strokeWeight(2); rect(x + 12, y + 28, w - 24, 30); noStroke();
         fill("#27c9b5"); textAlign(LEFT, CENTER); textSize(10); text(this.label, x + 12, y + 17);
         fill("#ffffff"); textSize(12); text(this.value || this.placeholder, x + 20, y + 43);
+        const cursorX = x + 20 + textWidth(this.value.slice(0, this.cursor));
+        stroke("#27c9b5"); line(cursorX, y + 32, cursorX, y + 53); noStroke();
         fill("#9ab5c3"); textSize(9); text("ENTER: guardar    ESC: cancelar", x + 12, y + h - 13);
     }
 }

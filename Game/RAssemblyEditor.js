@@ -8,10 +8,15 @@ class RAssemblyEditor extends Scene {
             ? GameLevels.get(levelId)
             : null;
         this.blocks = [];
-        this.needsRebuild = true;
-        this.blockView = null;
+        this.blockViews = new Map();
+        this.paletteNodes = [];
+        this.paletteNodesByCategory = {};
+        this._paletteBuilt = false;
+        this._uiBuilt = false;
+        this._syncingViews = false;
         this.paletteCategory = "FLUJO";
         this.dragging = null;
+        this.draggingView = null;
         this.selected = null;
         this.nextId = 1;
         this.scroll = 0;
@@ -34,7 +39,7 @@ class RAssemblyEditor extends Scene {
         this.maxLines = robotStats.blocks;
         this.maxVariables = robotStats.vars;
         this.cpu = robotStats.cpu;
-        this.robotName = this.loadout ? RobotLoadout.name(this.loadout) : "RF-01";
+        this.robotName = "RF-01";
         this.robotStats = robotStats;
         this.palette = {
             FLUJO: [
@@ -46,10 +51,23 @@ class RAssemblyEditor extends Scene {
                 { type: "MODULE", module: "DETECTAR_ENEMIGO", title: "DETECTAR_ENEMIGO", color: "#27c9b5", desc: "Leer el radar" },
                 { type: "MODULE", module: "DISPARAR", title: "DISPARAR", color: "#27c9b5", desc: "Usar los cañones" },
                 { type: "MODULE", module: "ACTIVAR_ESCUDO", title: "ACTIVAR_ESCUDO", color: "#27c9b5", desc: "Activar el escudo" },
-                { type: "MODULE", module: "MOVER", title: "MOVER", color: "#27c9b5", desc: "Controlar movimiento" }
+                { type: "MODULE", module: "MOVER_IZQUIERDA", title: "MOVER_IZQUIERDA", color: "#27c9b5", desc: "Desplazarse a la izquierda" },
+                { type: "MODULE", module: "MOVER_DERECHA", title: "MOVER_DERECHA", color: "#27c9b5", desc: "Desplazarse a la derecha" },
+                { type: "MODULE", module: "MOVER_ARRIBA", title: "MOVER_ARRIBA", color: "#27c9b5", desc: "Desplazarse hacia arriba" },
+                { type: "MODULE", module: "MOVER_ABAJO", title: "MOVER_ABAJO", color: "#27c9b5", desc: "Desplazarse hacia abajo" },
+                { type: "MODULE", module: "RADAR", title: "RADAR", color: "#27c9b5", desc: "Actualizar detección" }
             ],
             VARIABLES: [
-                { type: "VAR", title: "ENEMIGO_CERCA", color: "#3b5265", desc: "Variable para verificar si esta cerca" }
+                { type: "PREDEFINED", name: "ENEMIGO_CERCA", valueType: "BOOLEAN", title: "ENEMIGO_CERCA", color: "#3b5265", desc: "Enemigo dentro del radar" },
+                { type: "PREDEFINED", name: "ENEMIGO_DETECTADO", valueType: "BOOLEAN", title: "ENEMIGO_DETECTADO", color: "#3b5265", desc: "El radar encontró objetivo" },
+                { type: "PREDEFINED", name: "DISTANCIA", valueType: "NUMBER", title: "DISTANCIA", color: "#3b5265", desc: "Distancia al enemigo" },
+                { type: "PREDEFINED", name: "VIDA", valueType: "NUMBER", title: "VIDA", color: "#3b5265", desc: "Vida actual" },
+                { type: "PREDEFINED", name: "VIDA_MAXIMA", valueType: "NUMBER", title: "VIDA_MAXIMA", color: "#3b5265", desc: "Vida máxima" },
+                { type: "PREDEFINED", name: "ESCUDO_ACTIVO", valueType: "BOOLEAN", title: "ESCUDO_ACTIVO", color: "#3b5265", desc: "Estado del escudo" },
+                { type: "PREDEFINED", name: "ESCUDO_COOLDOWN", valueType: "NUMBER", title: "ESCUDO_COOLDOWN", color: "#3b5265", desc: "Recarga restante" },
+                { type: "PREDEFINED", name: "ENERGIA", valueType: "NUMBER", title: "ENERGIA", color: "#3b5265", desc: "Energía disponible" },
+                { type: "OPERATOR", operator: "AND", title: "Y", color: "#27c9b5", desc: "Operador lógico AND" },
+                { type: "OPERATOR", operator: "OR", title: "O", color: "#27c9b5", desc: "Operador lógico OR" }
             ]
         };
     }
@@ -66,16 +84,31 @@ class RAssemblyEditor extends Scene {
             .to(1, 24, this.animState, { paletteGlow: { from: 0, to: 1 } }, "EASEINOUT");
         this.introAnimation.loop = true;
         this.introAnimation.play();
-        this.blocks = [
-            { id: this.nextId++, type: "VAR", name: "enemigo", value: "0" },
-            { id: this.nextId++, type: "MODULE", module: "DETECTAR_ENEMIGO" },
-            {
-                id: this.nextId++, type: "IF", condition: "enemigo == 1", thenBlocks: [
-                    { id: this.nextId++, type: "MODULE", module: "DISPARAR" }
-                ]
-            }
-        ];
-        this.rebuildEditorNodes();
+        // El programa siempre tiene un ciclo principal fijo.
+        // El usuario programa dentro de este bloque; representa la lógica
+        // que el robot ejecuta en cada frame de combate.
+        const mainLoop = {
+            id: this.nextId++,
+            type: "WHILE",
+            condition: "VERDADERO",
+            body: [
+                { id: this.nextId++, type: "MODULE", module: "RADAR" },
+                {
+                    id: this.nextId++, type: "IF", condition: "ENEMIGO_CERCA", thenBlocks: [
+                        { id: this.nextId++, type: "MODULE", module: "DISPARAR" }
+                    ]
+                }
+            ],
+            mainLoop: true
+        };
+        this.blocks = [mainLoop];
+        this.buildMenu();
+        this._uiBuilt = true;
+        this.syncPaletteNodes();
+        this.syncBlockViews();
+        this.syncStatsNodes();
+        this.recalculateScroll();
+        this.syncScrollNodes();
     }
 
     tick(delta) {
@@ -90,12 +123,16 @@ class RAssemblyEditor extends Scene {
             const trackY = 106, trackH = 440, thumbH = this.getThumbHeight();
             const newY = Math.max(trackY, Math.min(trackY + trackH - thumbH, my - this.scrollbarGrab));
             this.scroll = this.scrollMax * ((newY - trackY) / Math.max(1, trackH - thumbH));
+            this.syncBlockViews();
+            this.syncScrollNodes();
             if (!Mouse.instance.isLeftClickPressed) this.scrollbarDrag = false;
             return;
         }
         if (this.dragging) {
             this.dragging.x = mx - 60;
             this.dragging.y = my - 18;
+            if (this.draggingView)
+                this.draggingView.sync(Math.max(202, this.dragging.x), Math.max(100, this.dragging.y), 550, 0);
             if (!Mouse.instance.isLeftClickPressed) this.finishDrag(mx, my);
             return;
         }
@@ -104,7 +141,7 @@ class RAssemblyEditor extends Scene {
             this.handlePressed(mx, my);
         }
         if (!Mouse.instance.isLeftClickPressed) this._mouseDown = false;
-        this.rebuildEditorNodes()
+        this.syncStatusNode();
     }
 
     handlePressed(mx, my) {
@@ -122,16 +159,18 @@ class RAssemblyEditor extends Scene {
         }
         if (this.pointIn(mx, my, 592, 10, 82, 28)) { this.compileProgram(); return; }
         if (this.pointIn(mx, my, 682, 10, 104, 28)) {
+            /*
             this.compileProgram();
             if (!this.status.startsWith("✕"))
                 Scene.change(new FightScene(this.generateSource(), this.levelId));
             return;
+            */
         }
         if (this.pointIn(mx, my, 12, 75, 166, 32)) {
-            this.paletteCategory = "FLUJO"; return;
+            this.setPaletteCategory("FLUJO"); return;
         }
-        if (this.pointIn(mx, my, 12, 111, 166, 32)) { this.paletteCategory = "MODULOS"; return; }
-        if (this.pointIn(mx, my, 12, 147, 166, 32)) { this.paletteCategory = "VARIABLES"; return; }
+        if (this.pointIn(mx, my, 12, 111, 166, 32)) { this.setPaletteCategory("MODULOS"); return; }
+        if (this.pointIn(mx, my, 12, 147, 166, 32)) { this.setPaletteCategory("VARIABLES"); return; }
 
         // Scrollbar del espacio de trabajo.
         const thumbY = this.getThumbY(), thumbH = this.getThumbHeight();
@@ -140,6 +179,8 @@ class RAssemblyEditor extends Scene {
                 this.scrollbarDrag = true; this.scrollbarGrab = my - thumbY;
             } else {
                 this.scroll = Math.max(0, Math.min(this.scrollMax, this.scroll + (my < thumbY ? -130 : 130)));
+                this.syncBlockViews();
+                this.syncScrollNodes();
             }
             return;
         }
@@ -158,22 +199,25 @@ class RAssemblyEditor extends Scene {
         if (this.pointIn(mx, my, 190, 92, 590, 486)) {
             const hit = this.hitBlock(mx, my);
             if (hit) {
-                if (this.pointIn(mx, my, hit.rect.x + hit.rect.w - 25, hit.rect.y + 4, 20, 20)) {
+                const isMainLoop = this.isMainLoop(hit.block);
+                if (!isMainLoop && this.pointIn(mx, my, hit.rect.x + hit.rect.w - 25, hit.rect.y + 4, 20, 20)) {
                     this.deleteBlock(hit.block); return;
                 }
-                if (this.pointIn(mx, my, hit.rect.x + hit.rect.w - 88, hit.rect.y + 4, 58, 20)) {
+                if (!isMainLoop && hit.block.type !== "MODULE" && this.pointIn(mx, my, hit.rect.x + hit.rect.w - 88, hit.rect.y + 4, 58, 20)) {
                     this.editBlock(hit.block); return;
                 }
                 this.selected = hit.block;
-                // Permite reordenar bloques arrastrándolos desde su cabecera.
-                if (my < hit.rect.y + 28) this.startExistingDrag(hit.block, mx, my);
+                // El ciclo principal es fijo: solo se pueden arrastrar sus hijos.
+                if (!isMainLoop && my < hit.rect.y + 28) this.startExistingDrag(hit.block, mx, my);
             }
         }
     }
 
     createBlock(entry) {
         if (entry.type === "VAR")
-            return { id: this.nextId++, type: "VAR", name: "enemigo", value: "0" };
+            return { id: this.nextId++, type: "VAR", name: "mi_variable", value: "0" };
+        if (entry.type === "PREDEFINED") return { id: this.nextId++, type: "PREDEFINED", name: entry.name, valueType: entry.valueType };
+        if (entry.type === "OPERATOR") return { id: this.nextId++, type: "OPERATOR", operator: entry.operator };
         if (entry.type === "IF")
             return { id: this.nextId++, type: "IF", condition: "enemigo == 1", thenBlocks: [] };
         if (entry.type === "WHILE")
@@ -187,44 +231,89 @@ class RAssemblyEditor extends Scene {
         this.selected = block;
         this.dragging.x = mx - 60;
         this.dragging.y = my - 18;
+        this.draggingView = Scene.instantiate(RAssemblyBlockView, {
+            editor: this, block, x: Math.max(202, this.dragging.x),
+            y: Math.max(100, this.dragging.y), w: 550, depth: 0
+        });
+        this.addChild(this.draggingView);
     }
 
     startExistingDrag(block, mx, my) {
         this._dragWasExisting = true;
         this._dragOriginalParent = this.findParentList(block, this.blocks);
         this._dragOriginalIndex = this._dragOriginalParent ? this._dragOriginalParent.indexOf(block) : -1;
+        this.draggingView = this.blockViews.get(block.id) || null;
         this.removeFromTree(block, this.blocks);
-        this.dragging = block; this.selected = block; this.dragging.x = mx - 60; this.dragging.y = my - 18;
+        if (this.draggingView) {
+            if (this.draggingView.parent) this.draggingView.parent.removeChild(this.draggingView);
+            this.addChild(this.draggingView);
+        }
+        this.dragging = block;
+        this.selected = block;
+        this.dragging.x = mx - 60;
+        this.dragging.y = my - 18;
+        if (this.draggingView) this.draggingView.sync(Math.max(202, this.dragging.x), Math.max(100, this.dragging.y), 550, 0);
+        this.syncBlockViews();
     }
 
     finishDrag(mx, my) {
         const block = this.dragging;
+        const view = this.draggingView;
         this.dragging = null;
+        this.draggingView = null;
         if (!block) return;
+
+        let inserted = false;
         if (this.pointIn(mx, my, 190, 92, 590, 486)) {
-            const target = this.findContainerAt(mx, my, this.blocks, 204, 112 - this.scroll);
-            if (target) target.list.push(block);
-            else {
-                const insertIndex = this.findInsertIndex(my + this.scroll - 112, this.blocks);
-                this.blocks.splice(Math.max(0, Math.min(insertIndex, this.blocks.length)), 0, block);
-            }
-            const linesExceeded = !this._dragWasExisting && this.countLines() > this.maxLines;
-            const variablesExceeded = !this._dragWasExisting && this.countVariables() > this.maxVariables;
-            if (linesExceeded || variablesExceeded) {
-                this.removeFromTree(block, this.blocks);
-                this.flash(linesExceeded
-                    ? `RAM insuficiente: máximo ${this.maxLines} líneas/bloques.`
-                    : `RAM insuficiente: máximo ${this.maxVariables} variables.`);
+            const drop = this.hitBlock(mx, my);
+            if (drop && (block.type === "PREDEFINED" || block.type === "OPERATOR")) {
+                if (block.type === "PREDEFINED" && drop.block.type === "VAR") drop.block.value = block.name;
+                else if (block.type === "PREDEFINED" && (drop.block.type === "IF" || drop.block.type === "WHILE")) {
+                    if (block.valueType === "BOOLEAN") drop.block.condition = block.name;
+                    else drop.block.condition = drop.block.condition.replace(/(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?|VERDADERO|FALSO)\s*$/, `$1 ${block.name}`);
+                } else if (block.type === "OPERATOR" && (drop.block.type === "IF" || drop.block.type === "WHILE")) {
+                    drop.block.condition = `${drop.block.condition} ${block.operator === "AND" ? "Y" : "O"} VERDADERO`;
+                }
+                this.flash("Valor/operador conectado a la condición.");
             } else {
-                this.flash(this._dragWasExisting ? "Bloque movido." : "¡Bloque añadido!");
+                const target = this.findContainerAt(mx, my, this.blocks, 204, 112 - this.scroll);
+                if (target) target.list.push(block);
+                else {
+                    const insertIndex = this.findInsertIndex(my + this.scroll - 112, this.blocks);
+                    this.blocks.splice(Math.max(0, Math.min(insertIndex, this.blocks.length)), 0, block);
+                }
+                const linesExceeded = !this._dragWasExisting && this.countLines() > this.maxLines;
+                const variablesExceeded = !this._dragWasExisting && this.countVariables() > this.maxVariables;
+                if (linesExceeded || variablesExceeded) {
+                    this.removeFromTree(block, this.blocks);
+                    this.flash(linesExceeded
+                        ? `RAM insuficiente: máximo ${this.maxLines} líneas/bloques.`
+                        : `RAM insuficiente: máximo ${this.maxVariables} variables.`);
+                } else {
+                    inserted = true;
+                    this.flash(this._dragWasExisting ? "Bloque movido." : "¡Bloque añadido!");
+                }
             }
         } else if (this._dragWasExisting) {
-            // Si se suelta fuera del área, restaurar el bloque a su lista original.
             const list = this._dragOriginalParent || this.blocks;
             list.splice(Math.max(0, this._dragOriginalIndex), 0, block);
+            inserted = true;
         }
+
+        if (inserted && view) {
+            view.block = block;
+            this.blockViews.set(block.id, view);
+        } else if (view) {
+            if (view.parent) view.parent.removeChild(view);
+            if (!this._dragWasExisting) this.blockViews.delete(block.id);
+        }
+
         this._dragWasExisting = false;
         this.recalculateScroll();
+        this.syncBlockViews();
+        this.syncScrollNodes();
+        this.syncStatsNodes();
+        this.syncStatusNode();
     }
 
     findContainerAt(mx, my, list, x, y) {
@@ -276,6 +365,10 @@ class RAssemblyEditor extends Scene {
     }
 
     editBlock(block) {
+        if (this.isMainLoop(block)) {
+            this.flash("El MIENTRAS VERDADERO principal no se puede editar.");
+            return;
+        }
         this.editingBlock = block;
         let fields = [];
         if (block.type === "VAR") fields = [
@@ -285,9 +378,7 @@ class RAssemblyEditor extends Scene {
         else if (block.type === "IF" || block.type === "WHILE") fields = [
             { key: "condition", label: "CONDICIÓN RASSEMBLY", value: block.condition }
         ];
-        else if (block.type === "MODULE") fields = [
-            { key: "module", label: "NOMBRE DEL MÓDULO", value: block.module }
-        ];
+        else if (block.type === "MODULE") return;
         if (!fields.length) return;
         this.editFields = fields;
         this.editFieldIndex = 0;
@@ -300,8 +391,13 @@ class RAssemblyEditor extends Scene {
             this.textField.close();
             this.flash("Bloque actualizado.");
             this.recalculateScroll();
+            this.syncBlockViews();
+            this.syncScrollNodes();
+            this.syncStatsNodes();
+            if (this.textField.parent === this) this.removeChild(this.textField);
             return;
         }
+        if (this.textField.parent !== this) this.addChild(this.textField);
         this.textField.open(field.value, field.label, value => {
             if (value.trim()) this.editingBlock[field.key] = value.trim();
             this.editFieldIndex++;
@@ -310,9 +406,26 @@ class RAssemblyEditor extends Scene {
     }
 
     deleteBlock(block) {
+        if (this.isMainLoop(block)) {
+            this.flash("El MIENTRAS VERDADERO principal no se puede borrar.");
+            return;
+        }
         this.removeFromTree(block, this.blocks);
         if (this.selected === block) this.selected = null;
-        this.flash("Bloque eliminado."); this.recalculateScroll();
+        this.flash("Bloque eliminado.");
+        this.recalculateScroll();
+        this.syncBlockViews();
+        this.syncScrollNodes();
+        this.syncStatsNodes();
+        this.syncStatusNode();
+    }
+
+    isMainLoop(block) {
+        return !!block && block.mainLoop === true;
+    }
+
+    getMainLoop() {
+        return this.blocks.find(block => this.isMainLoop(block)) || null;
     }
 
     blockHeight(block) {
@@ -360,6 +473,7 @@ class RAssemblyEditor extends Scene {
             const parser = new RAssemblyParser(new RAssemblyLexer(source).tokenize());
             parser.parse(); this.flash("✓ ¡Programa válido!");
         } catch (e) { this.flash("✕ " + e.message.replace("RASSEMBLY Parser: ", "")); }
+        this.syncStatusNode();
     }
 
     generateSource() {
@@ -376,7 +490,17 @@ class RAssemblyEditor extends Scene {
         };
         collect(this.blocks);
         for (const module of modules) lines.push(`IMPORTAR "${module}"`);
-        for (const block of this.blocks) this.emitBlock(block, lines, 0);
+
+        // Siempre existe un único ciclo principal. Todo el programa del robot
+        // vive dentro de él y se vuelve a ejecutar al comenzar cada frame.
+        const mainLoop = this.getMainLoop();
+        if (mainLoop) {
+            this.emitBlock(mainLoop, lines, 0);
+        } else {
+            // Salvaguarda por si un proyecto antiguo no tenía todavía el bloque raíz.
+            lines.push("MIENTRAS VERDADERO HACER");
+            lines.push("FIN");
+        }
         return lines.join("\n");
     }
 
@@ -396,8 +520,6 @@ class RAssemblyEditor extends Scene {
     }
 
     draw() {
-        // El fondo y la cuadrícula son decorativos; los controles y bloques
-        // se crean como Nodes/Scenes usando las clases de la UI del motor.
         background("#051824");
         noStroke();
         for (let i = 0; i < 24; i++) {
@@ -406,19 +528,6 @@ class RAssemblyEditor extends Scene {
             fill(39, 201, 181, 45 + (i % 3) * 22);
             rect(x, y, i % 4 === 0 ? 3 : 2, i % 4 === 0 ? 3 : 2);
         }
-
-        this.rebuildEditorNodes();
-    }
-
-    getBlockView(block, x, y, w) {
-        let view = Scene.instantiate(RAssemblyBlockView, {
-            editor: this,
-            block,
-            x,
-            y,
-            w
-        });
-        return view;
     }
 
     buildMenu() {
@@ -428,7 +537,14 @@ class RAssemblyEditor extends Scene {
         this.addChild(new RAssemblyLabel("level_top", this.level ? this.level.name : "EDITOR LIBRE", 296, 19, 8, this.level ? this.level.color : "#bed7e0", 104));
         this.addChild(new RAssemblyButton("back", "<- MENU", 10, 10, 90, 28, "#3b5265"));
         this.addChild(new RAssemblyButton("compile", "COMPILAR", 592, 10, 82, 28, "#27c9b5"));
-        this.addChild(new RAssemblyButton("test", "PROBAR", 682, 10, 104, 28, "#3b5265"));
+        let testBtn = new RAssemblyButton("test", "PROBAR", 682, 10, 104, 28, "#3b5265");
+        testBtn.onReleased = () => {
+            console.log("SEASASXD")
+            this.compileProgram();
+            if (!this.status.startsWith("✕"))
+                Scene.change(new FightScene(this.generateSource(), this.levelId));
+        }
+        this.addChild(testBtn);
         this.addChild(new RAssemblyLabel("stats_top", `CPU ${this.cpu}  ·  RAM ${this.countLines()}/${this.maxLines}`, 405, 18, 9, "#bed7e0", 170));
 
         this.addChild(new RAssemblyPanel("palette_bg", 0, 46, 190, 554, "#162936"));
@@ -483,43 +599,151 @@ class RAssemblyEditor extends Scene {
             this.addChild(this.textField);
     }
 
-    buildBlockView() {
+    // Sincroniza vistas por ID. Solo crea/elimina la vista cuyo bloque cambió;
+    // los demás Nodes conservan su identidad y estado.
+    syncBlockViews() {
+        if (!this._uiBuilt || this._syncingViews) return;
+        this._syncingViews = true;
+
+        const activeIds = new Set();
+        const collect = list => {
+            for (const block of list || []) {
+                activeIds.add(block.id);
+                collect(block.thenBlocks);
+                collect(block.body);
+            }
+        };
+        collect(this.blocks);
+        // Durante un arrastre, el bloque existente sigue vivo aunque esté
+        // temporalmente fuera de su lista de origen.
+        if (this._dragWasExisting && this.dragging) activeIds.add(this.dragging.id);
+
+        // Los bloques borrados pierden únicamente su propia vista.
+        for (const [id, view] of this.blockViews) {
+            if (!activeIds.has(id)) {
+                if (view.parent) view.parent.removeChild(view);
+                this.blockViews.delete(id);
+            }
+        }
+
         let y = 112 - this.scroll;
-
         for (const block of this.blocks) {
-            this.addChild(
-                this.getBlockView(block, 204, y, 550)
-            );
-
+            let view = this.blockViews.get(block.id);
+            if (!view) {
+                view = Scene.instantiate(RAssemblyBlockView, {
+                    editor: this, block, x: 204, y, w: 550, depth: 0
+                });
+                this.blockViews.set(block.id, view);
+            }
+            if (view.parent !== this) this.addChild(view);
+            view.block = block;
+            view.sync(204, y, 550, 0);
             y += this.blockHeight(block) + 8;
+        }
+        this._syncingViews = false;
+    }
+
+    // Mantiene el nombre antiguo por compatibilidad con llamadas externas,
+    // pero ya no reconstruye el árbol.
+    rebuildEditorNodes() {
+        this.syncBlockViews();
+        this.syncScrollNodes();
+        this.syncStatusNode();
+        this.syncStatsNodes();
+    }
+
+    setPaletteCategory(category) {
+        if (this.paletteCategory === category) return;
+        this.paletteCategory = category;
+        this.syncPaletteNodes();
+        const colors = {
+            category_flow: category === "FLUJO" ? "#27c9b5" : "#3b5265",
+            category_modules: category === "MODULOS" ? "#27c9b5" : "#3b5265",
+            category_variables: category === "VARIABLES" ? "#27c9b5" : "#3b5265"
+        };
+        for (const [name, color] of Object.entries(colors)) {
+            const button = this.getChildByName(name);
+            const surface = button && button.getChildByName(`${name}_surface`);
+            if (surface) surface.color = new Color(color);
         }
     }
 
-    buildDragBlock() {
-        if (!this.dragging) return;
+    syncPaletteNodes() {
+        if (!this._uiBuilt) return;
 
-        this.addChild(
-            this.getBlockView(
-                this.dragging,
-                Math.max(202, this.dragging.x),
-                Math.max(100, this.dragging.y),
-                550
-            )
-        );
+        // Construye las tres paletas una sola vez. Cambiar de categoría solo
+        // alterna visible; no destruye ni vuelve a instanciar sus Nodes.
+        if (!this._paletteBuilt) {
+            for (const [category, entries] of Object.entries(this.palette)) {
+                const categoryNodes = [];
+                for (let i = 0; i < entries.length; i++) {
+                    const entry = entries[i], y = 187 + i * 66;
+                    const nodes = [
+                        new RAssemblyPanel(`palette_shadow_${category}_${i}`, 15, y + 4, 164, 54, "#051824"),
+                        new RAssemblyPanel(`palette_card_${category}_${i}`, 12, y, 164, 54, entry.color),
+                        new RAssemblyPanel(`palette_card_shine_${category}_${i}`, 12, y, 164, 4, "#536c7e"),
+                        new RAssemblyPanel(`palette_card_header_${category}_${i}`, 18, y + 7, 152, 24, "#162936"),
+                        new RAssemblyLabel(`palette_card_title_${category}_${i}`, entry.title, 24, y + 14, entry.title.length > 15 ? 8 : 10, "#fff9e1", 140),
+                        new RAssemblyLabel(`palette_card_desc_${category}_${i}`, entry.desc, 21, y + 36, 8, "#051824", 150)
+                    ];
+                    for (const node of nodes) {
+                        node.visible = category === this.paletteCategory;
+                        categoryNodes.push(node);
+                        this.paletteNodes.push(node);
+                        this.addChild(node);
+                    }
+                }
+                this.paletteNodesByCategory[category] = categoryNodes;
+            }
+            this._paletteBuilt = true;
+            return;
+        }
+
+        for (const [category, nodes] of Object.entries(this.paletteNodesByCategory)) {
+            const visible = category === this.paletteCategory;
+            for (const node of nodes) node.visible = visible;
+        }
     }
 
-    rebuildEditorNodes() {
-        for (const child of [...this.children])
-            this.removeChild(child);
+    syncScrollNodes() {
+        const thumb = this.getChildByName("scroll_thumb");
+        const shine = this.getChildByName("scroll_thumb_shine");
+        if (thumb) {
+            thumb.pos = new Vector2(779, this.getThumbY());
+            thumb.size = new Vector2(12, this.getThumbHeight());
+        }
+        if (shine) {
+            shine.pos = new Vector2(781, this.getThumbY() + 2);
+            shine.size = new Vector2(3, Math.max(2, this.getThumbHeight() - 4));
+        }
+    }
 
-        this.buildMenu();
-        this.buildBlockView();
-        this.buildDragBlock();
+    syncStatusNode() {
+        const bg = this.getChildByName("status_bg");
+        const label = this.getChildByName("status_text");
+        if (bg) bg.visible = !!this.status;
+        if (label) {
+            label.visible = !!this.status;
+            label.setText(this.status || "");
+        }
+    }
+
+    syncStatsNodes() {
+        const top = this.getChildByName("stats_top");
+        const footer = this.getChildByName("workspace_stats");
+        if (top) top.setText(`CPU ${this.cpu}  ·  RAM ${this.countLines()}/${this.maxLines}`);
+        if (footer) footer.setText(`${this.robotName}  |  Variables: ${this.countVariables()}/${this.maxVariables}  |  Instrucciones: ${this.countLines()}/${this.maxLines}`);
+    }
+
+    buildBlockView() {
+        this.syncBlockViews();
     }
 
     blockText(block) {
         if (block.type === "VAR") return `VARIABLE   ${block.name} = ${block.value}`;
         if (block.type === "MODULE") return block.module;
+        if (block.type === "PREDEFINED") return `${block.name}  : ${block.valueType}`;
+        if (block.type === "OPERATOR") return block.operator === "AND" ? "Y  (AND)" : "O  (OR)";
         if (block.type === "IF") return `SI   [ ${block.condition} ]   ENTONCES`;
         if (block.type === "WHILE") return `MIENTRAS   [ ${block.condition} ]`;
         return "BLOQUE";

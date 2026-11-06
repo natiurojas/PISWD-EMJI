@@ -8,6 +8,7 @@ class Scene extends Node {
         // La escena comienza automáticamente en el árbol.
         this.started = false;
         this.type = "Scene";
+        this._isInstantiated = false;
     }
 
     start() {
@@ -23,7 +24,8 @@ class Scene extends Node {
     }
 
     enter() {
-        Scene.current = this;
+        if(!this._isInstantiated)
+            Scene.current = this;
 
         this.started = false;
 
@@ -34,9 +36,14 @@ class Scene extends Node {
     }
 
     exit() {
-        if (Scene.current === this)
+        if (Scene.current === this) {
             Scene.current = null;
+        }
+        console.log(this.name)
+        let parent = this.parent;
+        console.log("ELiminando a: ", parent.getChild(this.name))
         this.parent.removeChild(this);
+        console.log("Eliminado a: ", parent.getChild(this.name))
         this.started = false;
     }
 
@@ -101,6 +108,7 @@ class Scene extends Node {
         if(!(sceneClass.prototype instanceof Scene))
             throw new TypeError("sceneClass must be a subclass of Scene.");
         const scene = new sceneClass(...args);
+        scene._isInstantiated = true;
         scene.enter();
         return scene;
     }

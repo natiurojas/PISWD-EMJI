@@ -5,6 +5,8 @@ class RAssemblyVM {
         this.robot = robot;
 
         this.variables = {};
+        this.builtinVariables = {};
+        this.syncBuiltinVariables();
         this.modules = {}; // Modulos registrados
         this.importedModules = {}; // Modulos importados(Cuando se usa 'IMPORTAR "NOMBRE_MODULO"')
 
@@ -21,6 +23,15 @@ class RAssemblyVM {
         this.maxInstructions = 100000;
 
         this.executedInstructions = 0;
+    }
+
+    setBuiltinVariables(values = {}) {
+        this.builtinVariables = { ...values };
+        this.syncBuiltinVariables();
+    }
+
+    syncBuiltinVariables() {
+        Object.assign(this.variables, this.builtinVariables);
     }
 
     /* <--- Modulos ---> */
@@ -58,6 +69,37 @@ class RAssemblyVM {
         ];
         this.executedInstructions = 0;
         this.running = true;
+
+        // El primer MIENTRAS VERDADERO del editor es el ciclo de vida del robot.
+        // A diferencia de un WHILE normal, este ciclo termina su iteración al
+        // finalizar update(), para que el cuerpo represente exactamente un frame.
+        const rootIndex = (program.body || []).findIndex(statement =>
+            statement.type === "WHILE" &&
+            statement.condition &&
+            statement.condition.type === "LITERAL" &&
+            statement.condition.value === true
+        );
+        this.frameLoop = rootIndex >= 0 ? program.body[rootIndex] : null;
+
+        if (this.frameLoop) {
+            // Los IMPORTAR deben ejecutarse una sola vez antes de entrar
+            // al ciclo principal de frames.
+            const setupStatements = program.body.slice(0, rootIndex);
+            this.executionStack = [{
+                type: "FRAME_LOOP",
+                statements: this.frameLoop.body || [],
+                ip: 0
+            }];
+            if (setupStatements.length > 0) {
+                // La pila es LIFO: los imports quedan arriba para ejecutarse
+                // antes de comenzar el primer frame.
+                this.executionStack.push({
+                    type: "BLOCK",
+                    statements: setupStatements,
+                    ip: 0
+                });
+            }
+        }
     }
 
     /* <--- para ejecutar el programa ---> */
@@ -92,16 +134,24 @@ class RAssemblyVM {
     update() {
         if (!this.running || !this.program)
             return;
+        this.syncBuiltinVariables();
 
         let instructions = 0;
         while(this.running && instructions < this.instructionsPerFrame) {
-            this.step();
+            const result = this.step();
             instructions++;
             this.executedInstructions++;
 
-            if(this.executedInstructions > this.maxInstructions) {
+            // El ciclo principal representa un frame completo: no volvemos a
+            // ejecutar su cuerpo varias veces dentro del mismo update().
+            if (result === "FRAME_END")
+                break;
+
+            // maxInstructions se controla por iteración en los WHILE normales.
+            // El ciclo principal, en cambio, está limitado por instructionsPerFrame.
+            if(instructions > this.maxInstructions) {
                 this.running = false;
-                throw new Error("RASSEMBLY: se excedio el máximo de instrucciones.");
+                throw new Error("RASSEMBLY: se excedio el máximo de instrucciones en un frame.");
             }
         }
     }
@@ -117,7 +167,16 @@ class RAssemblyVM {
         }
 
         const frame = this.executionStack[this.executionStack.length - 1];
-        // Para el "WHILE" o "MIENTRAS"
+
+        // Ciclo principal del robot: una iteración por frame.
+        if(frame.type === "FRAME_LOOP") {
+            if (frame.ip >= frame.statements.length) {
+                frame.ip = 0;
+                return "FRAME_END";
+            }
+        }
+
+        // Para el "WHILE" o "MIENTRAS" normal
         if(frame.type === "WHILE") {
             // Terminamos una iteracion.
             if (frame.ip >= frame.statements.length) {
@@ -282,6 +341,6 @@ class RAssemblyVM {
     }
 
     hasVariable(name) {
-        return this.variables[name] !== undefined;
+        return Object.prototype.hasOwnProperty.call(this.variables, name);
     }
 }

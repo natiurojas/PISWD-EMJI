@@ -135,20 +135,19 @@ class RFUI {
 
 class RobotLoadout {
     static STORAGE_KEY = "robotFight.loadout.v1";
-    static DEFAULT_NAME = "RF-01";
     static COMPONENTS = {
         cpu: {
             title: "CPU", subtitle: "Velocidad de ejecución del código", items: [
-                { id: "eco", name: "ECO", detail: "6 ciclos/turno · peso +1", cycles: 6, weight: 1 },
-                { id: "balanced", name: "EQUILIBRADA", detail: "10 ciclos/turno · peso +2", cycles: 10, weight: 2 },
-                { id: "tactical", name: "TÁCTICA", detail: "15 ciclos/turno · peso +3", cycles: 15, weight: 3 }
+                { id: "eco", name: "ECO", detail: "6 ciclos por turno", cycles: 6 },
+                { id: "balanced", name: "EQUILIBRADA", detail: "10 ciclos por turno", cycles: 10 },
+                { id: "tactical", name: "TÁCTICA", detail: "15 ciclos por turno", cycles: 15 }
             ]
         },
         ram: {
             title: "RAM", subtitle: "Capacidad de programa y variables", items: [
-                { id: "ram12", name: "12 BLOQUES", detail: "12 bloques / 4 variables · peso +1", blocks: 12, vars: 4, weight: 1 },
-                { id: "ram20", name: "20 BLOQUES", detail: "20 bloques / 8 variables · peso +2", blocks: 20, vars: 8, weight: 2 },
-                { id: "ram32", name: "32 BLOQUES", detail: "32 bloques / 12 variables · peso +3", blocks: 32, vars: 12, weight: 3 }
+                { id: "ram12", name: "12 BLOQUES", detail: "Hasta 12 bloques / 4 variables", blocks: 12, vars: 4 },
+                { id: "ram20", name: "20 BLOQUES", detail: "Hasta 20 bloques / 8 variables", blocks: 20, vars: 8 },
+                { id: "ram32", name: "32 BLOQUES", detail: "Hasta 32 bloques / 12 variables", blocks: 32, vars: 12 }
             ]
         },
         chassis: {
@@ -181,32 +180,19 @@ class RobotLoadout {
         }
     };
 
-    static sanitizeName(name) {
-        const value = typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
-        return (value || this.DEFAULT_NAME).slice(0, 14);
-    }
-    static name(loadout) {
-        return this.sanitizeName(loadout && loadout.name);
-    }
     static defaults() {
-        return { name: this.DEFAULT_NAME, cpu: "balanced", ram: "ram20", chassis: "assault", cannons: "double", radar: "tactical", shield: "pulse" };
+        return { cpu: "balanced", ram: "ram20", chassis: "assault", cannons: "double", radar: "tactical", shield: "pulse" };
     }
     static load() {
         try {
             const raw = localStorage.getItem(this.STORAGE_KEY);
             if (!raw) return this.defaults();
-            const loadout = { ...this.defaults(), ...JSON.parse(raw) };
-            loadout.name = this.sanitizeName(loadout.name);
-            return loadout;
+            return { ...this.defaults(), ...JSON.parse(raw) };
         } catch (_) { return this.defaults(); }
     }
     static save(loadout) {
-        try {
-            const data = { ...loadout, name: this.sanitizeName(loadout.name) };
-            loadout.name = data.name;
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-            return true;
-        } catch (_) { return false; }
+        try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(loadout)); return true; }
+        catch (_) { return false; }
     }
     static selected(key, loadout) {
         const group = this.COMPONENTS[key];
@@ -219,10 +205,10 @@ class RobotLoadout {
         const shield = this.selected("shield", loadout);
         const cpu = this.selected("cpu", loadout);
         const ram = this.selected("ram", loadout);
-        const totalWeight = chassis.weight + cannon.weight + radar.weight + shield.weight + cpu.weight + ram.weight;
+        const totalWeight = chassis.weight + cannon.weight + radar.weight + shield.weight;
         const speed = Math.max(1, chassis.speed - Math.max(0, totalWeight - chassis.weight) * 0.35);
         return {
-            name: this.name(loadout), hp: chassis.hp, armor: chassis.armor, weight: totalWeight, speed,
+            hp: chassis.hp, armor: chassis.armor, weight: totalWeight, speed,
             slots: chassis.slots, cannons: cannon.count, damage: cannon.damage,
             radar: radar.range, shield: shield.duration, cpu: cpu.cycles,
             blocks: ram.blocks, vars: ram.vars

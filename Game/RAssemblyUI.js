@@ -1,4 +1,6 @@
 // Componentes visuales del editor. Todos forman parte del árbol de Nodes.
+// Las vistas de bloques son persistentes: se crean una vez y luego se sincronizan
+// con el modelo. El ID del bloque es su identidad estable.
 class RAssemblyPanel extends Panel {
     constructor(name, x, y, w, h, color = "#162936") {
         super();
@@ -38,171 +40,153 @@ class RAssemblyButton extends Button {
 }
 
 class RAssemblyBlockView extends Scene {
-    constructor({editor, block, x, y, w, depth = 0}) {
+    constructor({ editor, block, x = 0, y = 0, w = 550, depth = 0 }) {
         super();
         this.name = `Block_${block.id}`;
         this.type = "UI";
-
         this.editor = editor;
         this.block = block;
         this.depth = depth;
-
         this.pos = new Vector2(x, y);
         this.size = new Vector2(w, editor.blockHeight(block));
+        this.childViews = new Map();
+        this.refs = {};
+        this._built = false;
+    }
 
-        // Cada nivel tiene su propio color.
-        // Los colores se seleccionan de una paleta, no se oscurecen.
-        this.depthColors = [
+    onStart() {
+        if (this._built) return;
+        this._built = true;
+        const w = this.size.x;
+        const control = this.isControlBlock();
+        const colors = this.getColors();
+
+        this.refs.background = new Panel();
+        this.refs.background.name = "background";
+        this.addChild(this.refs.background);
+
+        this.refs.header = new RAssemblyPanel("header", 5, 5, w - 10, 24, colors.header);
+        this.addChild(this.refs.header);
+
+        this.refs.text = new RAssemblyLabel("block_text", "", 12, 10, 10, "#fff9e1", w - 120);
+        this.addChild(this.refs.text);
+
+        this.refs.edit = new RAssemblyButton("edit", "EDITAR", w - 88, 7, 56, 19, colors.main);
+        this.refs.edit.onReleased = () => this.editor.editBlock(this.block);
+        this.addChild(this.refs.edit);
+
+        this.refs.delete = new RAssemblyButton("delete", "×", w - 26, 7, 19, 19, "#a74355");
+        this.refs.delete.onReleased = () => this.editor.deleteBlock(this.block);
+        this.addChild(this.refs.delete);
+
+        this.refs.inner = new RAssemblyPanel("inner", 12, 33, w - 24, 24, colors.inner);
+        this.addChild(this.refs.inner);
+        this.refs.innerHeader = new RAssemblyPanel("inner_header", 16, 36, w - 32, 18, colors.header);
+        this.addChild(this.refs.innerHeader);
+        this.refs.innerLabel = new RAssemblyLabel("inner_label", "", 22, 41, 8, "#ffffff");
+        this.addChild(this.refs.innerLabel);
+        this.refs.empty = new RAssemblyLabel("empty", "Suelta aquí otros bloques", 24, 65, 8, "#e1edf5");
+        this.addChild(this.refs.empty);
+
+        this.sync(this.pos.x, this.pos.y, this.size.x, this.depth);
+    }
+
+    isControlBlock() {
+        return this.block.type === "IF" || this.block.type === "WHILE";
+    }
+
+    getColors() {
+        const palette = [
             { main: "#27c9b5", header: "#162936", inner: "#102b38" },
             { main: "#b58aff", header: "#302344", inner: "#241a35" },
             { main: "#ffbd69", header: "#392b1c", inner: "#2b2118" },
             { main: "#ff7d91", header: "#3b2029", inner: "#2d1921" },
             { main: "#65baff", header: "#192d40", inner: "#122335" }
         ];
-
-        this.colors = this.depthColors[depth % this.depthColors.length];
+        return palette[this.depth % palette.length];
     }
 
-    // Los bloques son nodos internos del editor: no deben reemplazar la escena activa.
-    enter() {
-        this.updateTransform();
-        this.updateGlobalColor();
-        this.start();
-    }
+    sync(x, y, w, depth = this.depth) {
+        this.block = this.block;
+        this.depth = depth;
+        this.pos = new Vector2(x, y);
+        this.size = new Vector2(w, this.editor.blockHeight(this.block));
+        if (!this._built) return;
 
-    onStart() {
-        const editor = this.editor;
+        const control = this.isControlBlock();
+        const colors = this.getColors();
+        const h = this.size.y;
         const block = this.block;
-        const w = this.size.x;
 
-        const colors = this.colors;
-
-        const isControlBlock =
-            block.type === "IF" ||
-            block.type === "WHILE";
-
-        // Fondo del bloque.
-        const background = new Panel();
-        background.name = "background";
-        background.pos = new Vector2(0, 0);
-        background.size = this.size.clone();
-        background.color = new Color(
-            isControlBlock ? this.colors.main : "#3b5265"
+        this.refs.background.size = this.size.clone();
+        this.refs.background.color = new Color(control ? colors.main : "#3b5265");
+        this.refs.header.size = new Vector2(w - 10, 24);
+        this.refs.header.color = new Color(colors.header);
+        this.refs.text.setText(this.editor.blockText(block));
+        this.refs.text.maxWidth = w - 120;
+        this.refs.text.color = new Color(
+            block.type === "VAR" ? "#bdffd6" :
+            block.type === "MODULE" ? "#bffcf0" : "#fff9e1"
         );
-        this.addChild(background);
 
-        // Cabecera principal.
-        const header = new RAssemblyPanel(
-            "header",
-            5, 5, w - 10, 24,
-            colors.header
-        );
-        this.addChild(header);
+        const mainLoop = this.editor.isMainLoop(block);
+        const editable = !mainLoop && block.type !== "MODULE" && block.type !== "PREDEFINED" && block.type !== "OPERATOR";
+        this.refs.edit.visible = editable;
+        this.refs.delete.visible = !mainLoop;
+        this.refs.edit.pos = new Vector2(w - 88, 7);
+        this.refs.delete.pos = new Vector2(w - 26, 7);
+        if (mainLoop) {
+            this.refs.text.maxWidth = w - 190;
+        }
 
-        // Color del texto.
-        let textColor = "#fff9e1";
+        this.refs.inner.visible = control;
+        this.refs.innerHeader.visible = control;
+        this.refs.innerLabel.visible = control;
+        this.refs.empty.visible = control;
+        if (control) {
+            this.refs.inner.size = new Vector2(w - 24, h - 39);
+            this.refs.inner.color = new Color(colors.inner);
+            this.refs.innerHeader.size = new Vector2(w - 32, 18);
+            this.refs.innerHeader.color = new Color(colors.header);
+            this.refs.innerLabel.setText(block.type === "IF" ? "ENTONCES ↓" : "HACER ↓");
+        }
 
-        if (block.type === "VAR")
-            textColor = "#bdffd6";
-        else if (block.type === "WHILE")
-            textColor = "#ffffff";
-        else if (block.type === "IF")
-            textColor = "#ffffff";
-        else if (block.type === "MODULE")
-            textColor = "#bffcf0";
+        this.syncChildren();
+    }
 
-        const blockText = new RAssemblyLabel(
-            "block_text",
-            editor.blockText(block),
-            12, 10, 10,
-            textColor,
-            w - 120
-        );
-        this.addChild(blockText);
+    syncChildren() {
+        if (!this._built || !this.isControlBlock()) {
+            for (const view of this.childViews.values()) this.removeChild(view);
+            this.childViews.clear();
+            return;
+        }
 
-        // Botón para editar.
-        const editButton = new RAssemblyButton(
-            "edit",
-            "EDITAR",
-            w - 88, 7, 56, 19,
-            colors.main
-        );
-        editButton.onReleased = () => {
-            editor.editBlock(this.block);
-        };
-        this.addChild(editButton);
-
-        // Botón para eliminar.
-        const deleteButton = new RAssemblyButton(
-            "delete",
-            "×",
-            w - 26, 7, 19, 19,
-            "#a74355"
-        );
-        deleteButton.onReleased = () => {
-            console.log("XD");
-            editor.deleteBlock(this.block);
-        };
-        this.addChild(deleteButton);
-
-        // Los bloques de control contienen otros bloques.
-        if (isControlBlock) {
-            const list = block.type === "IF"
-                ? block.thenBlocks || []
-                : block.body || [];
-
-            // Área donde se alojan los bloques hijos.
-            const inner = new RAssemblyPanel(
-                "inner",
-                12, 33, w - 24, this.size.y - 39,
-                colors.inner
-            );
-            this.addChild(inner);
-
-            const innerHeader = new RAssemblyPanel(
-                "inner_header",
-                16, 36, w - 32, 18,
-                colors.header
-            );
-            this.addChild(innerHeader);
-
-            const innerLabel = new RAssemblyLabel(
-                "inner_label",
-                block.type === "IF"
-                    ? "ENTONCES ↓"
-                    : "HACER ↓",
-                22, 41, 8,
-                "#ffffff"
-            );
-            this.addChild(innerLabel);
-
-            if (list.length === 0) {
-                const emptyLabel = new RAssemblyLabel(
-                    "empty",
-                    "Suelta aquí otros bloques",
-                    24, 65, 8,
-                    "#e1edf5"
-                );
-                this.addChild(emptyLabel);
-            }
-
-            let childY = 58;
-
-            for (const child of list) {
-                const childView = Scene.instantiate(RAssemblyBlockView, {
-                    editor,
-                    block: child,
-                    x: 20,
-                    y: childY,
-                    w: w - 40,
-                    depth: this.depth + 1
-                });
-
-                this.addChild(childView);
-
-                childY += editor.blockHeight(child) + 6;
+        const list = this.block.type === "IF" ? (this.block.thenBlocks || []) : (this.block.body || []);
+        const activeIds = new Set(list.map(child => child.id));
+        for (const [id, view] of this.childViews) {
+            if (!activeIds.has(id)) {
+                if (view.parent === this) this.removeChild(view);
+                this.childViews.delete(id);
             }
         }
-    }
 
+        this.refs.empty.visible = list.length === 0;
+        let childY = 58;
+        for (const child of list) {
+            let view = this.editor.blockViews.get(child.id);
+            if (!view) {
+                view = Scene.instantiate(RAssemblyBlockView, {
+                    editor: this.editor, block: child,
+                    x: 20, y: childY, w: this.size.x - 40,
+                    depth: this.depth + 1
+                });
+                this.editor.blockViews.set(child.id, view);
+            }
+            if (view.parent !== this) this.addChild(view);
+            this.childViews.set(child.id, view);
+            view.block = child;
+            view.sync(20, childY, this.size.x - 40, this.depth + 1);
+            childY += this.editor.blockHeight(child) + 6;
+        }
+    }
 }

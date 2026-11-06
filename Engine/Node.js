@@ -318,32 +318,59 @@ class Node {
 
     addChild(child) {
         if (!(child instanceof Node))
-            throw new TypeError(
-                "Node.addChild(): child must be a Node."
-            );
+            throw new TypeError("Node.addChild(): child must be a Node.");
 
         if (child === this)
+            throw new Error("Node.addChild(): a Node cannot be its own child.");
+
+        // Evita ciclos: no se puede insertar un ancestro dentro de uno de
+        // sus descendientes.
+        if (child.isAncestorOf(this))
             throw new Error(
-                "Error: A Node cannot add itself as a child."
+                `Node.addChild(): '${child.name}' is an ancestor of '${this.name}'.`
             );
 
-        if (this.isAncestorOf(child))
-            throw new Error(
-                `Error: the node '${this.name}' is ancestor of: '${child.name}'.`
-            );
-
-        if (child.parent !== null)
+        // Reparentar no crea una copia. Se mueve la misma instancia.
+        if (child.parent === this) {
+            const currentIndex = this.children.indexOf(child);
+            if (currentIndex !== -1) this.children.splice(currentIndex, 1);
+        } else if (child.parent !== null) {
             child.parent.removeChild(child);
+        }
 
         this.children.push(child);
         child.parent = this;
-
         this.childCount = this.children.length;
 
         child.updateTransform();
         child.updateGlobalColor();
+        return child;
     }
 
+    // Cambia el orden de dibujo/actualización sin destruir ni recrear el Node.
+    moveChild(childOrIndex, newIndex) {
+        const oldIndex = typeof childOrIndex === "number"
+            ? childOrIndex
+            : this.children.indexOf(childOrIndex);
+
+        if (oldIndex < 0 || oldIndex >= this.children.length)
+            return false;
+
+        const child = this.children[oldIndex];
+        const index = Math.max(0, Math.min(
+            this.children.length - 1,
+            Math.trunc(newIndex)
+        ));
+
+        if (oldIndex === index) return true;
+        this.children.splice(oldIndex, 1);
+        this.children.splice(index, 0, child);
+        return true;
+    }
+
+    setChildIndex(childOrIndex, newIndex) {
+        return this.moveChild(childOrIndex, newIndex);
+    }
 
     getChild(indexOrName) {
         if (typeof indexOrName === "string")
@@ -387,15 +414,15 @@ class Node {
         );
 
         if (index === -1)
-            return;
+            return null;
 
-        this.removeChildByIndex(index);
+        return this.removeChildByIndex(index);
     }
 
 
     removeChildByIndex(index) {
         if (index < 0 || index >= this.children.length)
-            return;
+            return null;
 
         const child = this.children[index];
 
@@ -407,6 +434,7 @@ class Node {
 
         child.updateTransform();
         child.updateGlobalColor();
+        return child;
     }
 
 
@@ -414,21 +442,21 @@ class Node {
         const index = this.children.indexOf(child);
 
         if (index === -1)
-            return;
+            return null;
 
-        this.removeChildByIndex(index);
+        return this.removeChildByIndex(index);
     }
 
 
     removeChild(childOrIndexOrName) {
         if (typeof childOrIndexOrName === "string") {
-            this.removeChildByName(childOrIndexOrName);
+            return this.removeChildByName(childOrIndexOrName);
         }
         else if (typeof childOrIndexOrName === "number") {
-            this.removeChildByIndex(childOrIndexOrName);
+            return this.removeChildByIndex(childOrIndexOrName);
         }
         else if (childOrIndexOrName instanceof Node) {
-            this.removeChildByPtr(childOrIndexOrName);
+            return this.removeChildByPtr(childOrIndexOrName);
         }
         else {
             throw new TypeError(

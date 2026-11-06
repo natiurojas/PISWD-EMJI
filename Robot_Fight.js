@@ -14,7 +14,15 @@ function draw() {
 }
 
 function keyPressed() {
+    if (Scene.current && typeof Scene.current.handleTextFieldKey === "function" && Scene.current.handleTextFieldKey(keyCode, key)) return false;
     game.keyManager.keyDown(keyCode);
+} 
+
+function keyTyped() {
+    if (Scene.current && typeof Scene.current.handleTextFieldCharacter === "function") {
+        Scene.current.handleTextFieldCharacter(key);
+        return false;
+    }
 }
 
 function keyReleased() {

@@ -44,7 +44,7 @@ class RAssemblyRobot extends Node {
         this.vm.setVariable(name, value);
     }
 
-    hasVariable(name) {
-        return this.vm.hasVariable(name);
-    }
+    hasVariable(name) { return this.vm.hasVariable(name); }
+
+    setBuiltinVariables(values) { this.vm.setBuiltinVariables(values); }
 }
