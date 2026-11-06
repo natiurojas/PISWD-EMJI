@@ -34,7 +34,9 @@ class FightScene extends Scene {
         this.playerEvasionTimer = 0;
         this.playerLaserTimer = 0;
         this.enemyLaserTimer = 0;
-        this.enemyFireTimer = 1.4;
+        this.enemyFireTimer = this.level.openingDelay ?? 1.4;
+        this.enemyBurstLeft = 0;
+        this.enemyBurstTimer = 0;
         this.damageDealt = 0;
         this.score = 0;
         this.projectiles = [];
@@ -492,7 +494,7 @@ class FightScene extends Scene {
 
         this.enemyLaserTimer = 0.08;
 
-        if (this.playerEvasionTimer > 0 && Math.random() < 0.35)
+        if (this.playerEvasionTimer > 0 && Math.random() < (this.level.evasionChance ?? 0.35))
             return;
 
         if (this.playerShieldTimer > 0)
@@ -584,8 +586,19 @@ class FightScene extends Scene {
 
         this.enemyFireTimer -= dt;
 
+        if (this.enemyBurstTimer > 0)
+            this.enemyBurstTimer = Math.max(0, this.enemyBurstTimer - dt);
+
         if (this.enemyFireTimer <= 0) {
             this.enemyFireTimer = this.level.fireRate;
+            this.enemyBurstLeft = Math.max(0, (this.level.burst ?? 1) - 1);
+            this.enemyBurstTimer = this.level.burstGap ?? 0.16;
+            this.enemyShoot();
+        }
+
+        if (this.enemyBurstLeft > 0 && this.enemyBurstTimer <= 0) {
+            this.enemyBurstLeft--;
+            this.enemyBurstTimer = this.level.burstGap ?? 0.16;
             this.enemyShoot();
         }
 
