@@ -60,7 +60,7 @@ class RAssemblyEditor extends Scene {
             ],
             MODULOS: [
                 { type: "MODULE", module: "DETECTAR_ENEMIGO", title: "DETECTAR_ENEMIGO", color: "#27c9b5", desc: "Leer el radar" },
-                { type: "MODULE", module: "DISPARAR", title: "DISPARAR", color: "#27c9b5", desc: "Usar los cañones" },
+                { type: "MODULE", module: "DISPARAR", title: "DISPARAR", color: "#27c9b5", desc: "Usar los canones" },
                 { type: "MODULE", module: "ACTIVAR_ESCUDO", title: "ACTIVAR_ESCUDO", color: "#27c9b5", desc: "Activar el escudo" },
                 { type: "MODULE", module: "MOVER_IZQUIERDA", title: "MOVER_IZQUIERDA", color: "#27c9b5", desc: "Desplazarse a la izquierda" },
                 { type: "MODULE", module: "MOVER_DERECHA", title: "MOVER_DERECHA", color: "#27c9b5", desc: "Desplazarse a la derecha" },

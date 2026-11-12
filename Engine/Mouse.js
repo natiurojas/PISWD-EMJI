@@ -15,8 +15,10 @@ class Mouse {
     }
 
     update() {
-        this.x = mouseX;
-        this.y = mouseY;
+        console.log("Mouse update: " + mouseX + ", " + mouseY);
+        console.log("this.x = " + this.x + ", this.y = " + this.y)
+        this.x = mouseX * (game.newWidth / game.width);
+        this.y = mouseY * (game.newHeight / game.height);
 
         // Los eventos duran solamente un frame.
         this.isLeftClickReleased = false;

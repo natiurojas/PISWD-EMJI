@@ -10,6 +10,8 @@ class Game {
     this.keyManager = new KeyManager();
     this.width = 800;
     this.height = 600;
+    this.newWidth = 1024;
+    this.newHeight = 768;
   }
   init()
   {
@@ -26,7 +28,9 @@ class Game {
   loop()
   {
     this.dt = deltaTime / 1000; // Lo pasamos a segundos
+    this.mouse.update();
     this.update();
+    scale(this.newWidth / this.width, this.newHeight / this.height);
     this.draw();
   }
   update()

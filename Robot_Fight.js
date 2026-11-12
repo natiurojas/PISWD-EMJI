@@ -3,7 +3,7 @@ let game;
 function setup() {
     game = new Game();
     game.init();
-    createCanvas(game.width, game.height);
+    createCanvas(game.newWidth, game.newHeight);
 
     // Cargamos la escena del Login.
     Scene.change(new LoginScene());

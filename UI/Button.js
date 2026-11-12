@@ -57,11 +57,19 @@ class Button extends Node {
             this.size.x * this.globalScale.x,
             this.size.y * this.globalScale.y
         );
+        let posScaled = new Vector2(
+            this.globalPos.x * (game.newWidth / game.width),
+            this.globalPos.y * (game.newHeight / game.height)
+        );
+        let sizeScaled = new Vector2(
+            finalSize.x * (game.newWidth / game.width),
+            finalSize.y * (game.newHeight / game.height)
+        )
         const mouseInside =
-            mouseX >= this.globalPos.x &&
-            mouseX <= this.globalPos.x + finalSize.x &&
-            mouseY >= this.globalPos.y &&
-            mouseY <= this.globalPos.y + finalSize.y;
+            mouseX >= posScaled.x &&
+            mouseX <= posScaled.x + sizeScaled.x &&
+            mouseY >= posScaled.y &&
+            mouseY <= posScaled.y + sizeScaled.y;
 
         if(mouseInside)
         {
