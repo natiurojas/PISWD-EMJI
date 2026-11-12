@@ -61,9 +61,10 @@ class MainMenu extends Scene {
         RFUI.button(this, "PUNTUACIONES", 160, 444, 120, 43, () => Scene.change(new ScoresScene()), {
             name: "ScoresButton", fontSize: 7, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
         });
-        RFUI.button(this, "OPCIONES", 288, 444, 94, 43, () => Scene.change(new SettingsScene()), {
+        /*RFUI.button(this, "OPCIONES", 288, 444, 94, 43, () => Scene.change(new SettingsScene()), {
             name: "SettingsButton", fontSize: 8, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
         });
+        */
         RFUI.label(this, "VERSIÓN ESCOLAR  •  LABORATORIO DE ROBOTS", 420, 506, 6, RFUI.COLORS.muted);
         RFUI.label(this, "RAssembly convierte tus bloques en decisiones de combate.", 420, 523, 7, RFUI.COLORS.muted);
 
