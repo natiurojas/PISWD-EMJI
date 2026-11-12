@@ -79,6 +79,26 @@ class RAssemblyBlockView extends Scene {
         this.refs.delete.onReleased = () => this.editor.deleteBlock(this.block);
         this.addChild(this.refs.delete);
 
+        // Área interactiva del encabezado. La interacción del bloque ya no
+        // depende de pointIn(); se resuelve mediante Button.onPressed/onReleased.
+        this.refs.drag = new RAssemblyButton(
+            "drag", "", 5, 5, Math.max(30, w - 100), 24, "transparent"
+        );
+
+        const dragSurface = this.refs.drag.getChildByName("drag_surface");
+        const dragShine = this.refs.drag.getChildByName("drag_shine");
+        const dragLabel = this.refs.drag.getChildByName("drag_label");
+        if (dragSurface) dragSurface.visible = false;
+        if (dragShine) dragShine.visible = false;
+        if (dragLabel) dragLabel.visible = false;
+
+        this.refs.drag.onPressed = () => {
+            if (!this.editor.dragging && !this.editor.isMainLoop(this.block))
+                this.editor.startExistingDrag(this.block, mouseX, mouseY);
+        };
+
+        this.addChild(this.refs.drag);
+
         this.refs.inner = new RAssemblyPanel("inner", 12, 33, w - 24, 24, colors.inner);
         this.addChild(this.refs.inner);
         this.refs.innerHeader = new RAssemblyPanel("inner_header", 16, 36, w - 32, 18, colors.header);
@@ -87,6 +107,11 @@ class RAssemblyBlockView extends Scene {
         this.addChild(this.refs.innerLabel);
         this.refs.empty = new RAssemblyLabel("empty", "Suelta aquí otros bloques", 24, 65, 8, "#e1edf5");
         this.addChild(this.refs.empty);
+
+        this.refs.elseHeader = new RAssemblyPanel("else_header", 16, 0, w - 32, 20, "#49345F");
+        this.addChild(this.refs.elseHeader);
+        this.refs.elseLabel = new RAssemblyLabel("else_label", "SINO ↓", 22, 0, 8, "#F2DFFF");
+        this.addChild(this.refs.elseLabel);
 
         this.sync(this.pos.x, this.pos.y, this.size.x, this.depth);
     }
@@ -135,6 +160,14 @@ class RAssemblyBlockView extends Scene {
         this.refs.delete.visible = !mainLoop;
         this.refs.edit.pos = new Vector2(w - 88, 7);
         this.refs.delete.pos = new Vector2(w - 26, 7);
+        this.refs.drag.pos = new Vector2(5, 5);
+        this.refs.drag.size = new Vector2(Math.max(30, w - 100), 24);
+
+        const interactionLocked = !!this.editor.dragging;
+        this.refs.edit.disabled = interactionLocked;
+        this.refs.delete.disabled = interactionLocked;
+        this.refs.drag.disabled = mainLoop || interactionLocked;
+
         if (mainLoop) {
             this.refs.text.maxWidth = w - 190;
         }
@@ -142,7 +175,11 @@ class RAssemblyBlockView extends Scene {
         this.refs.inner.visible = control;
         this.refs.innerHeader.visible = control;
         this.refs.innerLabel.visible = control;
-        this.refs.empty.visible = control;
+        this.refs.empty.visible = control && (
+            (block.thenBlocks || []).length === 0
+        );
+        this.refs.elseHeader.visible = control && block.type === "IF" && !!block.hasElse;
+        this.refs.elseLabel.visible = this.refs.elseHeader.visible;
         if (control) {
             this.refs.inner.size = new Vector2(w - 24, h - 39);
             this.refs.inner.color = new Color(colors.inner);
@@ -161,8 +198,15 @@ class RAssemblyBlockView extends Scene {
             return;
         }
 
-        const list = this.block.type === "IF" ? (this.block.thenBlocks || []) : (this.block.body || []);
-        const activeIds = new Set(list.map(child => child.id));
+        const thenList = this.block.type === "IF"
+            ? (this.block.thenBlocks || [])
+            : (this.block.body || []);
+        const elseList = this.block.type === "IF" && this.block.hasElse
+            ? (this.block.elseBlocks || [])
+            : [];
+        const combined = [...thenList, ...elseList];
+        const activeIds = new Set(combined.map(child => child.id));
+
         for (const [id, view] of this.childViews) {
             if (!activeIds.has(id)) {
                 if (view.parent === this) this.removeChild(view);
@@ -170,23 +214,39 @@ class RAssemblyBlockView extends Scene {
             }
         }
 
-        this.refs.empty.visible = list.length === 0;
+        this.refs.empty.visible = thenList.length === 0;
         let childY = 58;
-        for (const child of list) {
-            let view = this.editor.blockViews.get(child.id);
-            if (!view) {
-                view = Scene.instantiate(RAssemblyBlockView, {
-                    editor: this.editor, block: child,
-                    x: 20, y: childY, w: this.size.x - 40,
-                    depth: this.depth + 1
-                });
-                this.editor.blockViews.set(child.id, view);
+
+        const syncList = (list, startY) => {
+            let y = startY;
+            for (const child of list) {
+                let view = this.editor.blockViews.get(child.id);
+                if (!view) {
+                    view = Scene.instantiate(RAssemblyBlockView, {
+                        editor: this.editor, block: child,
+                        x: 20, y, w: this.size.x - 40,
+                        depth: this.depth + 1
+                    });
+                    this.editor.blockViews.set(child.id, view);
+                }
+                if (view.parent !== this) this.addChild(view);
+                this.childViews.set(child.id, view);
+                view.block = child;
+                view.sync(20, y, this.size.x - 40, this.depth + 1);
+                y += this.editor.blockHeight(child) + 6;
             }
-            if (view.parent !== this) this.addChild(view);
-            this.childViews.set(child.id, view);
-            view.block = child;
-            view.sync(20, childY, this.size.x - 40, this.depth + 1);
-            childY += this.editor.blockHeight(child) + 6;
+            return y;
+        };
+
+        childY = syncList(thenList, childY);
+
+        if (this.block.type === "IF" && this.block.hasElse) {
+            const separatorY = childY + 2;
+            this.refs.elseHeader.pos = new Vector2(16, separatorY);
+            this.refs.elseHeader.size = new Vector2(this.size.x - 32, 20);
+            this.refs.elseLabel.pos = new Vector2(22, separatorY + 5);
+            childY = separatorY + 24;
+            syncList(elseList, childY);
         }
     }
 }

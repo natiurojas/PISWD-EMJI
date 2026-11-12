@@ -1,9 +1,10 @@
 class RAssemblyEditor extends Scene {
-    constructor(levelId = null) {
+    constructor(levelId = null, options = {}) {
         super();
         this.type = "UI";
         this.name = "RAssemblyEditor";
         this.levelId = levelId;
+        this.returnScene = options.returnScene || null;
         this.level = levelId !== null && typeof GameLevels !== "undefined"
             ? GameLevels.get(levelId)
             : null;
@@ -11,6 +12,7 @@ class RAssemblyEditor extends Scene {
         this.blockViews = new Map();
         this.paletteNodes = [];
         this.paletteNodesByCategory = {};
+        this._paletteCardGroups = {};
         this._paletteBuilt = false;
         this._uiBuilt = false;
         this._syncingViews = false;
@@ -23,6 +25,13 @@ class RAssemblyEditor extends Scene {
         this.scrollMax = 0;
         this.scrollbarDrag = false;
         this.scrollbarGrab = 0;
+        this.paletteScroll = 0;
+        this.paletteScrollMax = 0;
+        this.paletteScrollbarDrag = false;
+        this._paletteThumbPressed = false;
+        this.paletteScrollbarGrab = 0;
+        this.paletteViewport = { top: 187, height: 348 };
+        this._declaredPaletteSignature = "";
         this.guideVisible = true;
         this.guidePage = 0;
         this.status = "Arrastra bloques al espacio de trabajo.";
@@ -39,12 +48,14 @@ class RAssemblyEditor extends Scene {
         this.maxLines = robotStats.blocks;
         this.maxVariables = robotStats.vars;
         this.cpu = robotStats.cpu;
-        this.robotName = "RF-01";
+        this.robotName = this.loadout && this.loadout.name ? this.loadout.name : "RF-01";
         this.robotStats = robotStats;
         this.palette = {
             FLUJO: [
                 { type: "VAR", title: "VARIABLE", color: "#3b5265", desc: "Crear una variable" },
+                { type: "ASSIGN", title: "ASIGNAR", color: "#3b5265", desc: "Cambiar una variable existente" },
                 { type: "IF", title: "SI ... ENTONCES", color: "#27c9b5", desc: "Tomar una decisión" },
+                { type: "ELSE", title: "SINO", color: "#b58aff", desc: "Rama alternativa de un SI" },
                 { type: "WHILE", title: "MIENTRAS ...", color: "#3b5265", desc: "Repetir acciones" }
             ],
             MODULOS: [
@@ -55,7 +66,12 @@ class RAssemblyEditor extends Scene {
                 { type: "MODULE", module: "MOVER_DERECHA", title: "MOVER_DERECHA", color: "#27c9b5", desc: "Desplazarse a la derecha" },
                 { type: "MODULE", module: "MOVER_ARRIBA", title: "MOVER_ARRIBA", color: "#27c9b5", desc: "Desplazarse hacia arriba" },
                 { type: "MODULE", module: "MOVER_ABAJO", title: "MOVER_ABAJO", color: "#27c9b5", desc: "Desplazarse hacia abajo" },
-                { type: "MODULE", module: "RADAR", title: "RADAR", color: "#27c9b5", desc: "Actualizar detección" }
+                { type: "MODULE", module: "RADAR", title: "RADAR", color: "#27c9b5", desc: "Actualizar detección" },
+                { type: "MODULE", module: "ACERCARSE", title: "ACERCARSE", color: "#27c9b5", desc: "Avanzar hacia el enemigo" },
+                { type: "MODULE", module: "ALEJARSE", title: "ALEJARSE", color: "#27c9b5", desc: "Tomar distancia del enemigo" },
+                { type: "MODULE", module: "ESQUIVAR", title: "ESQUIVAR", color: "#27c9b5", desc: "Activar evasión temporal" },
+                { type: "MODULE", module: "REPARAR", title: "REPARAR", color: "#27c9b5", desc: "Recuperar integridad" },
+                { type: "MODULE", module: "RECARGAR_ENERGIA", title: "RECARGAR_ENERGIA", color: "#27c9b5", desc: "Recuperar energía" }
             ],
             VARIABLES: [
                 { type: "PREDEFINED", name: "ENEMIGO_CERCA", valueType: "BOOLEAN", title: "ENEMIGO_CERCA", color: "#3b5265", desc: "Enemigo dentro del radar" },
@@ -68,7 +84,8 @@ class RAssemblyEditor extends Scene {
                 { type: "PREDEFINED", name: "ENERGIA", valueType: "NUMBER", title: "ENERGIA", color: "#3b5265", desc: "Energía disponible" },
                 { type: "OPERATOR", operator: "AND", title: "Y", color: "#27c9b5", desc: "Operador lógico AND" },
                 { type: "OPERATOR", operator: "OR", title: "O", color: "#27c9b5", desc: "Operador lógico OR" }
-            ]
+            ],
+            VARIABLES_DECLARADAS: []
         };
     }
 
@@ -102,6 +119,7 @@ class RAssemblyEditor extends Scene {
             mainLoop: true
         };
         this.blocks = [mainLoop];
+        this.restoreProgramSource();
         this.buildMenu();
         this._uiBuilt = true;
         this.syncPaletteNodes();
@@ -118,114 +136,212 @@ class RAssemblyEditor extends Scene {
             this.statusTime -= delta;
             if (this.statusTime <= 0) this.status = "";
         }
+
         const mx = mouseX, my = mouseY;
-        if (this.scrollbarDrag) {
-            const trackY = 106, trackH = 440, thumbH = this.getThumbHeight();
-            const newY = Math.max(trackY, Math.min(trackY + trackH - thumbH, my - this.scrollbarGrab));
-            this.scroll = this.scrollMax * ((newY - trackY) / Math.max(1, trackH - thumbH));
-            this.syncBlockViews();
-            this.syncScrollNodes();
-            if (!Mouse.instance.isLeftClickPressed) this.scrollbarDrag = false;
+
+        if (this.paletteScrollbarDrag) {
+            const trackY = this.paletteViewport.top;
+            const trackH = this.paletteViewport.height;
+            const thumbH = this.getPaletteThumbHeight();
+            const newY = Math.max(trackY, Math.min(trackY + trackH - thumbH, my - this.paletteScrollbarGrab));
+            this.paletteScroll = this.paletteScrollMax *
+                ((newY - trackY) / Math.max(1, trackH - thumbH));
+            this.syncPaletteNodes();
             return;
         }
+
+        // El arrastre se actualiza mientras el botón de origen permanece
+        // presionado. La finalización se delega al onReleased del botón
+        // transparente de captura global.
+        if (this.scrollbarDrag) {
+            const trackY = 106, trackH = 440, thumbH = this.getThumbHeight();
+            const newY = Math.max(
+                trackY,
+                Math.min(trackY + trackH - thumbH, my - this.scrollbarGrab)
+            );
+            this.scroll = this.scrollMax *
+                ((newY - trackY) / Math.max(1, trackH - thumbH));
+
+            this.syncBlockViews();
+            this.syncScrollNodes();
+            return;
+        }
+
         if (this.dragging) {
             this.dragging.x = mx - 60;
             this.dragging.y = my - 18;
-            if (this.draggingView)
-                this.draggingView.sync(Math.max(202, this.dragging.x), Math.max(100, this.dragging.y), 550, 0);
-            if (!Mouse.instance.isLeftClickPressed) this.finishDrag(mx, my);
+
+            if (this.draggingView) {
+                this.draggingView.sync(
+                    Math.max(202, this.dragging.x),
+                    Math.max(100, this.dragging.y),
+                    550,
+                    0
+                );
+            }
+
             return;
         }
-        if (Mouse.instance.isLeftClickPressed && !this._mouseDown) {
-            this._mouseDown = true;
-            this.handlePressed(mx, my);
-        }
-        if (!Mouse.instance.isLeftClickPressed) this._mouseDown = false;
+
         this.syncStatusNode();
     }
 
-    handlePressed(mx, my) {
-        if (this.textField && this.textField.active) return;
-        if (this.guideVisible) {
-            if (this.pointIn(mx, my, 636, 544, 90, 28)) {
-                this.guidePage++;
-                if (this.guidePage >= 3) this.guideVisible = false;
-                return;
-            }
-            if (this.pointIn(mx, my, 730, 544, 42, 28)) { this.guideVisible = false; return; }
-        }
-        if (this.pointIn(mx, my, 10, 10, 90, 28)) {
-            Scene.change(this.levelId ? new LevelsScene() : new MainMenu()); return;
-        }
-        if (this.pointIn(mx, my, 592, 10, 82, 28)) { this.compileProgram(); return; }
-        if (this.pointIn(mx, my, 682, 10, 104, 28)) {
-            /*
-            this.compileProgram();
-            if (!this.status.startsWith("✕"))
-                Scene.change(new FightScene(this.generateSource(), this.levelId));
-            return;
-            */
-        }
-        if (this.pointIn(mx, my, 12, 75, 166, 32)) {
-            this.setPaletteCategory("FLUJO"); return;
-        }
-        if (this.pointIn(mx, my, 12, 111, 166, 32)) { this.setPaletteCategory("MODULOS"); return; }
-        if (this.pointIn(mx, my, 12, 147, 166, 32)) { this.setPaletteCategory("VARIABLES"); return; }
-
-        // Scrollbar del espacio de trabajo.
-        const thumbY = this.getThumbY(), thumbH = this.getThumbHeight();
-        if (this.pointIn(mx, my, 778, 106, 14, 440)) {
-            if (this.pointIn(mx, my, 778, thumbY, 14, thumbH)) {
-                this.scrollbarDrag = true; this.scrollbarGrab = my - thumbY;
-            } else {
-                this.scroll = Math.max(0, Math.min(this.scrollMax, this.scroll + (my < thumbY ? -130 : 130)));
-                this.syncBlockViews();
-                this.syncScrollNodes();
-            }
-            return;
+    // Captura el release aunque el cursor haya terminado fuera del botón
+    // que inició la interacción.
+    handlePointerRelease() {
+        if (this.dragging) {
+            this.finishDrag(mouseX, mouseY);
         }
 
-        // Bloques de la paleta.
-        const entries = this.palette[this.paletteCategory];
-        for (let i = 0; i < entries.length; i++) {
-            const y = 187 + i * 66;
-            if (this.pointIn(mx, my, 12, y, 164, 54)) {
-                this.startDrag(this.createBlock(entries[i]), mx, my);
-                return;
-            }
+        if (this.scrollbarDrag) {
+            this.scrollbarDrag = false;
         }
 
-        
-        if (this.pointIn(mx, my, 190, 92, 590, 486)) {
-            const hit = this.hitBlock(mx, my);
-            if (hit) {
-                const isMainLoop = this.isMainLoop(hit.block);
-                if (!isMainLoop && this.pointIn(mx, my, hit.rect.x + hit.rect.w - 25, hit.rect.y + 4, 20, 20)) {
-                    this.deleteBlock(hit.block); return;
-                }
-                if (!isMainLoop && hit.block.type !== "MODULE" && this.pointIn(mx, my, hit.rect.x + hit.rect.w - 88, hit.rect.y + 4, 58, 20)) {
-                    this.editBlock(hit.block); return;
-                }
-                this.selected = hit.block;
-                // El ciclo principal es fijo: solo se pueden arrastrar sus hijos.
-                if (!isMainLoop && my < hit.rect.y + 28) this.startExistingDrag(hit.block, mx, my);
-            }
+        this._scrollbarThumbPressed = false;
+        this.paletteScrollbarDrag = false;
+        this._paletteThumbPressed = false;
+    }
+
+    createHitButton(name, x, y, w, h, onPressed = null, onReleased = null) {
+        const button = new RAssemblyButton(name, "", x, y, w, h, "transparent");
+
+        const surface = button.getChildByName(`${name}_surface`);
+        const shine = button.getChildByName(`${name}_shine`);
+        const label = button.getChildByName(`${name}_label`);
+
+        if (surface) surface.visible = false;
+        if (shine) shine.visible = false;
+        if (label) label.visible = false;
+
+        button.onPressed = onPressed;
+        button.onReleased = onReleased;
+
+        this.addChild(button);
+        return button;
+    }
+
+    expressionToSource(expression) {
+        if (!expression) return "0";
+        if (expression.type === "LITERAL") {
+            if (expression.value === true) return "VERDADERO";
+            if (expression.value === false) return "FALSO";
+            if (typeof expression.value === "string")
+                return `"${expression.value.replace(/"/g, '\\"')}"`;
+            return String(expression.value);
         }
+        if (expression.type === "VARIABLE") return expression.name;
+        if (expression.type === "UNARY") {
+            const operator = expression.operator === "NOT" ? "NO" : "-";
+            return `${operator}${this.expressionToSource(expression.right)}`;
+        }
+        if (expression.type === "BINARY") {
+            const operators = {
+                OR: "O", AND: "Y", EQUAL: "==", NOT_EQUAL: "!=",
+                GT: ">", GTE: ">=", LT: "<", LTE: "<=",
+                PLUS: "+", MINUS: "-", MULTIPLY: "*", DIVIDE: "/"
+            };
+            return `(${this.expressionToSource(expression.left)} ${operators[expression.operator] || expression.operator} ${this.expressionToSource(expression.right)})`;
+        }
+        return "0";
+    }
+
+    restoreProgramSource() {
+        let source = "";
+        try { source = localStorage.getItem("emji.rassembly.program") || ""; }
+        catch (_) { return false; }
+        if (!source.trim()) return false;
+
+        try {
+            const parser = new RAssemblyParser(new RAssemblyLexer(source).tokenize());
+            const program = parser.parse();
+            this.nextId = 1;
+
+            const convertList = statements => (statements || [])
+                .map(statement => {
+                    const id = this.nextId++;
+                    if (statement.type === "VAR")
+                        return { id, type: "VAR", name: statement.name, value: this.expressionToSource(statement.value) };
+                    if (statement.type === "ASSIGN")
+                        return { id, type: "ASSIGN", name: statement.name, value: this.expressionToSource(statement.value) };
+                    if (statement.type === "CALL")
+                        return { id, type: "MODULE", module: statement.module };
+                    if (statement.type === "IF") {
+                        const hasElse = Array.isArray(statement.elseBody);
+                        return {
+                            id, type: "IF",
+                            condition: this.expressionToSource(statement.condition),
+                            thenBlocks: convertList(statement.thenBody),
+                            elseBlocks: convertList(statement.elseBody || []),
+                            hasElse
+                        };
+                    }
+                    if (statement.type === "WHILE")
+                        return {
+                            id, type: "WHILE",
+                            condition: this.expressionToSource(statement.condition),
+                            body: convertList(statement.body)
+                        };
+                    return null;
+                })
+                .filter(Boolean);
+
+            const roots = convertList(program.body);
+            const mainLoop = roots.find(block => block.type === "WHILE");
+            if (mainLoop) {
+                mainLoop.mainLoop = true;
+                this.blocks = [mainLoop];
+                return true;
+            }
+        } catch (error) {
+            console.warn("[RAssemblyEditor] No se pudo restaurar el programa guardado:", error.message);
+        }
+        return false;
+    }
+
+    playBlockSplash(target) {
+        if (!target || typeof Animation === "undefined") return;
+        if (target._blockSplash && target._blockSplash.isPlaying())
+            target._blockSplash.stop();
+        target.scale = new Vector2(1, 1);
+        target._blockSplash = new Animation()
+            .setFrames(12)
+            .to(1, 4, target, {
+                scaleX: { from: 1, to: 1.09 },
+                scaleY: { from: 1, to: 1.09 }
+            }, "EASEINOUT")
+            .to(4, 12, target, {
+                scaleX: { from: 1.09, to: 1 },
+                scaleY: { from: 1.09, to: 1 }
+            }, "EASEINOUT")
+            .play();
     }
 
     createBlock(entry) {
         if (entry.type === "VAR")
             return { id: this.nextId++, type: "VAR", name: "mi_variable", value: "0" };
-        if (entry.type === "PREDEFINED") return { id: this.nextId++, type: "PREDEFINED", name: entry.name, valueType: entry.valueType };
+        if (entry.type === "ASSIGN")
+            return { id: this.nextId++, type: "ASSIGN", name: "mi_variable", value: "0" };
+        if (entry.type === "PREDEFINED" || entry.type === "DECLARED_VAR")
+            return { id: this.nextId++, type: "PREDEFINED", name: entry.name, valueType: entry.valueType };
         if (entry.type === "OPERATOR") return { id: this.nextId++, type: "OPERATOR", operator: entry.operator };
         if (entry.type === "IF")
-            return { id: this.nextId++, type: "IF", condition: "enemigo == 1", thenBlocks: [] };
+            return { id: this.nextId++, type: "IF", condition: "enemigo == 1", thenBlocks: [], elseBlocks: [], hasElse: false };
+        if (entry.type === "ELSE")
+            return { id: this.nextId++, type: "ELSE", body: [] };
         if (entry.type === "WHILE")
             return { id: this.nextId++, type: "WHILE", condition: "VERDADERO", body: [] };
         return { id: this.nextId++, type: "MODULE", module: entry.module };
     }
 
+    setEditorButtonsEnabled(enabled) {
+        for (const child of this.children) {
+            if (child instanceof Button && child.name !== "pointer_release_catcher")
+                child.disabled = !enabled;
+        }
+    }
+
     startDrag(block, mx, my) {
+        if (this.dragging || this.paletteScrollbarDrag || this.scrollbarDrag) return false;
         this.dragging = block;
         this._dragWasExisting = false;
         this.selected = block;
@@ -235,10 +351,26 @@ class RAssemblyEditor extends Scene {
             editor: this, block, x: Math.max(202, this.dragging.x),
             y: Math.max(100, this.dragging.y), w: 550, depth: 0
         });
+
+        // El bloque recién creado no puede reaccionar al mismo click que
+        // inició su arrastre.
+        this.draggingView.refs.edit.disabled = true;
+        this.draggingView.refs.delete.disabled = true;
+        this.draggingView.refs.drag.disabled = true;
+
         this.addChild(this.draggingView);
+        this.setEditorButtonsEnabled(false);
+        this.playBlockSplash(this.draggingView);
+        if (typeof AudioPlayer !== "undefined") AudioPlayer.play("blockPick");
+        this.syncBlockViews();
+        this.syncPaletteNodes();
+        return true;
     }
 
     startExistingDrag(block, mx, my) {
+        // Button.tick puede visitar varios botones en un mismo frame.
+        // Nunca permitimos iniciar un segundo drag mientras uno esté activo.
+        if (this.dragging || this.paletteScrollbarDrag || this.scrollbarDrag) return false;
         this._dragWasExisting = true;
         this._dragOriginalParent = this.findParentList(block, this.blocks);
         this._dragOriginalIndex = this._dragOriginalParent ? this._dragOriginalParent.indexOf(block) : -1;
@@ -252,8 +384,14 @@ class RAssemblyEditor extends Scene {
         this.selected = block;
         this.dragging.x = mx - 60;
         this.dragging.y = my - 18;
-        if (this.draggingView) this.draggingView.sync(Math.max(202, this.dragging.x), Math.max(100, this.dragging.y), 550, 0);
+        this.setEditorButtonsEnabled(false);
+        if (this.draggingView) {
+            this.draggingView.sync(Math.max(202, this.dragging.x), Math.max(100, this.dragging.y), 550, 0);
+            this.playBlockSplash(this.draggingView);
+        }
+        if (typeof AudioPlayer !== "undefined") AudioPlayer.play("blockPick");
         this.syncBlockViews();
+        return true;
     }
 
     finishDrag(mx, my) {
@@ -264,9 +402,24 @@ class RAssemblyEditor extends Scene {
         if (!block) return;
 
         let inserted = false;
-        if (this.pointIn(mx, my, 190, 92, 590, 486)) {
+        if (
+            mx >= 190 && mx <= 780 &&
+            my >= 92 && my <= 578
+        ) {
             const drop = this.hitBlock(mx, my);
-            if (drop && (block.type === "PREDEFINED" || block.type === "OPERATOR")) {
+            if (block.type === "ELSE") {
+                const targetIf = this.findIfTarget(drop && drop.block);
+                if (!targetIf || targetIf.hasElse) {
+                    this.flash(targetIf
+                        ? "Este SI ya tiene un bloque SINO."
+                        : "SINO solo se puede colocar debajo de un bloque SI ... ENTONCES.");
+                } else {
+                    targetIf.hasElse = true;
+                    targetIf.elseBlocks = block.body || [];
+                    inserted = true;
+                    this.flash("Rama SINO agregada al bloque SI.");
+                }
+            } else if (drop && (block.type === "PREDEFINED" || block.type === "OPERATOR")) {
                 if (block.type === "PREDEFINED" && drop.block.type === "VAR") drop.block.value = block.name;
                 else if (block.type === "PREDEFINED" && (drop.block.type === "IF" || drop.block.type === "WHILE")) {
                     if (block.valueType === "BOOLEAN") drop.block.condition = block.name;
@@ -294,6 +447,8 @@ class RAssemblyEditor extends Scene {
                     this.flash(this._dragWasExisting ? "Bloque movido." : "¡Bloque añadido!");
                 }
             }
+        } else if (block.type === "ELSE") {
+            this.flash("SINO solo se puede colocar debajo de un bloque SI ... ENTONCES.");
         } else if (this._dragWasExisting) {
             const list = this._dragOriginalParent || this.blocks;
             list.splice(Math.max(0, this._dragOriginalIndex), 0, block);
@@ -302,18 +457,50 @@ class RAssemblyEditor extends Scene {
 
         if (inserted && view) {
             view.block = block;
+            this.playBlockSplash(view);
+            if (typeof AudioPlayer !== "undefined") AudioPlayer.play("blockDrop");
             this.blockViews.set(block.id, view);
         } else if (view) {
+            if (typeof AudioPlayer !== "undefined") AudioPlayer.play("blockInvalid");
             if (view.parent) view.parent.removeChild(view);
             if (!this._dragWasExisting) this.blockViews.delete(block.id);
         }
 
         this._dragWasExisting = false;
+        this.setEditorButtonsEnabled(true);
         this.recalculateScroll();
         this.syncBlockViews();
         this.syncScrollNodes();
         this.syncStatsNodes();
         this.syncStatusNode();
+    }
+
+    findIfTarget(block) {
+        if (!block) return null;
+        if (block.type === "IF") return block;
+
+        let current = block;
+        while (current) {
+            const parentList = this.findParentList(current, this.blocks);
+            if (!parentList) return null;
+            const parent = this.findParentBlock(parentList);
+            if (!parent) return null;
+            if (parent.type === "IF") return parent;
+            current = parent;
+        }
+        return null;
+    }
+
+    findParentBlock(targetList, list = this.blocks) {
+        for (const block of list || []) {
+            if (block.thenBlocks === targetList || block.elseBlocks === targetList || block.body === targetList)
+                return block;
+            const found = this.findParentBlock(targetList, block.thenBlocks || []) ||
+                this.findParentBlock(targetList, block.elseBlocks || []) ||
+                this.findParentBlock(targetList, block.body || []);
+            if (found) return found;
+        }
+        return null;
     }
 
     findContainerAt(mx, my, list, x, y) {
@@ -322,7 +509,19 @@ class RAssemblyEditor extends Scene {
             if (b.type === "IF" || b.type === "WHILE") {
                 const innerY = y + 58;
                 const innerH = h - 66;
-                if (this.pointIn(mx, my, x + 18, innerY, 520, Math.max(28, innerH))) {
+                if (
+                    mx >= x + 18 &&
+                    mx <= x + 18 + 520 &&
+                    my >= innerY &&
+                    my <= innerY + Math.max(28, innerH)
+                ) {
+                    if (b.type === "IF" && b.hasElse) {
+                        const elseY = innerY + Math.max(24, this.listHeight(b.thenBlocks || [])) + 26;
+                        if (my >= elseY && my <= elseY + Math.max(28, this.listHeight(b.elseBlocks || []))) {
+                            const nestedElse = this.findContainerAt(mx, my, b.elseBlocks || [], x + 34, elseY);
+                            return nestedElse || { block: b, list: b.elseBlocks };
+                        }
+                    }
                     const childList = b.type === "IF" ? b.thenBlocks : b.body;
                     const nested = this.findContainerAt(mx, my, childList, x + 34, innerY);
                     return nested || { block: b, list: childList };
@@ -341,8 +540,8 @@ class RAssemblyEditor extends Scene {
 
     findParentList(target, list) {
         for (const b of list) {
-            if ((b.thenBlocks || []).includes(target) || (b.body || []).includes(target)) return b.thenBlocks || b.body;
-            const found = this.findParentList(target, b.thenBlocks || []) || this.findParentList(target, b.body || []);
+            if ((b.thenBlocks || []).includes(target) || (b.elseBlocks || []).includes(target) || (b.body || []).includes(target)) return b.thenBlocks || b.body;
+            const found = this.findParentList(target, b.thenBlocks || []) || this.findParentList(target, b.elseBlocks || []) || this.findParentList(target, b.body || []);
             if (found) return found;
         }
         return null;
@@ -351,7 +550,7 @@ class RAssemblyEditor extends Scene {
     removeFromTree(target, list) {
         const i = list.indexOf(target);
         if (i >= 0) { list.splice(i, 1); return true; }
-        for (const b of list) if (this.removeFromTree(target, b.thenBlocks || []) || this.removeFromTree(target, b.body || [])) return true;
+        for (const b of list) if (this.removeFromTree(target, b.thenBlocks || []) || this.removeFromTree(target, b.elseBlocks || []) || this.removeFromTree(target, b.body || [])) return true;
         return false;
     }
 
@@ -371,7 +570,7 @@ class RAssemblyEditor extends Scene {
         }
         this.editingBlock = block;
         let fields = [];
-        if (block.type === "VAR") fields = [
+        if (block.type === "VAR" || block.type === "ASSIGN") fields = [
             { key: "name", label: "NOMBRE DE VARIABLE", value: block.name },
             { key: "value", label: "VALOR / EXPRESIÓN", value: block.value }
         ];
@@ -429,7 +628,11 @@ class RAssemblyEditor extends Scene {
     }
 
     blockHeight(block) {
-        if (block.type === "IF") return 66 + Math.max(24, this.listHeight(block.thenBlocks || []));
+        if (block.type === "IF") {
+            const thenHeight = Math.max(24, this.listHeight(block.thenBlocks || []));
+            const elseHeight = block.hasElse ? 28 + Math.max(24, this.listHeight(block.elseBlocks || [])) : 0;
+            return 66 + thenHeight + elseHeight;
+        }
         if (block.type === "WHILE") return 66 + Math.max(24, this.listHeight(block.body || []));
         return 34;
     }
@@ -444,8 +647,18 @@ class RAssemblyEditor extends Scene {
                     const children = block.type === "IF" ? block.thenBlocks || [] : block.body || [];
                     const found = visit(children, x + 20, y + 58);
                     if (found) return found;
+                    if (block.type === "IF" && block.hasElse) {
+                        const elseY = y + 58 + Math.max(24, this.listHeight(block.thenBlocks || [])) + 26;
+                        const foundElse = visit(block.elseBlocks || [], x + 20, elseY);
+                        if (foundElse) return foundElse;
+                    }
                 }
-                if (this.pointIn(mx, my, x, y, rectInfo.w, h)) return { block, rect: rectInfo };
+                if (
+                    mx >= x &&
+                    mx <= x + rectInfo.w &&
+                    my >= y &&
+                    my <= y + h
+                ) return { block, rect: rectInfo };
                 y += h + 8;
             }
             return null;
@@ -460,7 +673,6 @@ class RAssemblyEditor extends Scene {
 
     getThumbHeight() { return Math.max(36, 440 * (440 / Math.max(440, this.listHeight(this.blocks) + this.blocks.length * 8))); }
     getThumbY() { return 106 + (440 - this.getThumbHeight()) * (this.scrollMax ? this.scroll / this.scrollMax : 0); }
-    pointIn(x, y, px, py, w, h) { return x >= px && x <= px + w && y >= py && y <= py + h; }
     flash(message) { this.status = message; this.statusTime = 2.2; }
 
     compileProgram() {
@@ -471,7 +683,18 @@ class RAssemblyEditor extends Scene {
                 throw new Error(`RAM insuficiente: el chasis admite ${this.maxVariables} variables.`);
             const source = this.generateSource();
             const parser = new RAssemblyParser(new RAssemblyLexer(source).tokenize());
-            parser.parse(); this.flash("✓ ¡Programa válido!");
+            parser.parse();
+            const programCode = this.generateSource();
+            try { localStorage.setItem("emji.rassembly.program", programCode); } catch (_) {}
+            if (typeof BackendClient !== "undefined" && BackendClient.token()) {
+                const loadout = typeof RobotLoadout !== "undefined" ? RobotLoadout.load() : {};
+                BackendClient.saveProfile({
+                    robotName: loadout.name || this.robotName,
+                    loadout,
+                    programCode
+                }).catch(error => console.warn("[EMJI] No se pudo sincronizar el programa:", error.message));
+            }
+            this.flash("✓ ¡Programa válido!");
         } catch (e) { this.flash("✕ " + e.message.replace("RASSEMBLY Parser: ", "")); }
         this.syncStatusNode();
     }
@@ -485,6 +708,7 @@ class RAssemblyEditor extends Scene {
                 if (b.type === "MODULE")
                     modules.add(b.module);
                 collect(b.thenBlocks);
+                collect(b.elseBlocks);
                 collect(b.body);
             }
         };
@@ -507,10 +731,15 @@ class RAssemblyEditor extends Scene {
     emitBlock(block, lines, indent) {
         const pad = "    ".repeat(indent);
         if (block.type === "VAR") lines.push(pad + `VAR ${block.name} = ${block.value}`);
+        else if (block.type === "ASSIGN") lines.push(pad + `${block.name} = ${block.value}`);
         else if (block.type === "MODULE") lines.push(pad + `LLAMAR ${block.module}`);
         else if (block.type === "IF") {
             lines.push(pad + `SI ${block.condition} ENTONCES`);
             for (const child of block.thenBlocks || []) this.emitBlock(child, lines, indent + 1);
+            if (block.hasElse) {
+                lines.push(pad + "SINO");
+                for (const child of block.elseBlocks || []) this.emitBlock(child, lines, indent + 1);
+            }
             lines.push(pad + "FIN");
         } else if (block.type === "WHILE") {
             lines.push(pad + `MIENTRAS ${block.condition} HACER`);
@@ -535,14 +764,26 @@ class RAssemblyEditor extends Scene {
         this.addChild(new RAssemblyPanel("top_bar_line", 0, 42, 800, 4, "#3b5265"));
         this.addChild(new RAssemblyLabel("title", "R//ASSEMBLY LAB", 118, 17, 17, "#27c9b5"));
         this.addChild(new RAssemblyLabel("level_top", this.level ? this.level.name : "EDITOR LIBRE", 296, 19, 8, this.level ? this.level.color : "#bed7e0", 104));
-        this.addChild(new RAssemblyButton("back", "<- MENU", 10, 10, 90, 28, "#3b5265"));
-        this.addChild(new RAssemblyButton("compile", "COMPILAR", 592, 10, 82, 28, "#27c9b5"));
-        let testBtn = new RAssemblyButton("test", "PROBAR", 682, 10, 104, 28, "#3b5265");
+
+        const backBtn = new RAssemblyButton("back", "<- MENU", 10, 10, 90, 28, "#3b5265");
+        backBtn.onReleased = () => {
+            Scene.change(this.returnScene || (this.levelId ? new LevelsScene() : new MainMenu()));
+        };
+        this.addChild(backBtn);
+
+        const compileBtn = new RAssemblyButton("compile", "COMPILAR", 592, 10, 82, 28, "#27c9b5");
+        compileBtn.onReleased = () => this.compileProgram();
+        this.addChild(compileBtn);
+
+        let testBtn = new RAssemblyButton(
+            "test", this.returnScene ? "GUARDAR" : "PROBAR",
+            682, 10, 104, 28, "#3b5265"
+        );
         testBtn.onReleased = () => {
-            console.log("SEASASXD")
             this.compileProgram();
-            if (!this.status.startsWith("✕"))
-                Scene.change(new FightScene(this.generateSource(), this.levelId));
+            if (this.status.startsWith("✕")) return;
+            if (this.returnScene) Scene.change(this.returnScene);
+            else Scene.change(new FightScene(this.generateSource(), this.levelId));
         }
         this.addChild(testBtn);
         this.addChild(new RAssemblyLabel("stats_top", `CPU ${this.cpu}  ·  RAM ${this.countLines()}/${this.maxLines}`, 405, 18, 9, "#bed7e0", 170));
@@ -550,22 +791,44 @@ class RAssemblyEditor extends Scene {
         this.addChild(new RAssemblyPanel("palette_bg", 0, 46, 190, 554, "#162936"));
         this.addChild(new RAssemblyPanel("palette_edge", 184, 46, 6, 554, "#051824"));
         this.addChild(new RAssemblyLabel("palette_title", "BLOQUES", 13, 51, 14, "#27c9b5"));
-        this.addChild(new RAssemblyButton("category_flow", "FLUJO", 12, 75, 166, 32, this.paletteCategory === "FLUJO" ? "#27c9b5" : "#3b5265"));
-        this.addChild(new RAssemblyButton("category_modules", "MÓDULOS", 12, 111, 166, 32, this.paletteCategory === "MODULOS" ? "#27c9b5" : "#3b5265"));
-        this.addChild(new RAssemblyButton("category_variables", "VARIABLES", 12, 147, 166, 32, this.paletteCategory === "VARIABLES" ? "#27c9b5" : "#3b5265"));
-
-        const entries = this.palette[this.paletteCategory] || [];
-
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i], y = 187 + i * 66;
-
-            this.addChild(new RAssemblyPanel(`palette_shadow_${i}`, 15, y + 4, 164, 54, "#051824"));
-            this.addChild(new RAssemblyPanel(`palette_card_${i}`, 12, y, 164, 54, entry.color));
-            this.addChild(new RAssemblyPanel(`palette_card_shine_${i}`, 12, y, 164, 4, "#536c7e"));
-            this.addChild(new RAssemblyPanel(`palette_card_header_${i}`, 18, y + 7, 152, 24, "#162936"));
-            this.addChild(new RAssemblyLabel(`palette_card_title_${i}`, entry.title, 24, y + 14, entry.title.length > 15 ? 8 : 10, "#fff9e1", 140));
-            this.addChild(new RAssemblyLabel(`palette_card_desc_${i}`, entry.desc, 21, y + 36, 8, "#051824", 150));
+        const categories = [
+            ["FLUJO", "FLUJO", 12, 75, "category_flow"],
+            ["MODULOS", "MÓDULOS", 98, 75, "category_modules"],
+            ["VARIABLES", "VARIABLES", 12, 111, "category_variables"],
+            ["VARIABLES_DECLARADAS", "DECLARADAS", 98, 111, "category_declared"]
+        ];
+        for (const [key, text, x, y, name] of categories) {
+            const button = new RAssemblyButton(
+                name, text, x, y, 80, 30,
+                this.paletteCategory === key ? "#27c9b5" : "#3b5265"
+            );
+            button.onReleased = () => this.setPaletteCategory(key);
+            this.addChild(button);
         }
+
+        this.addChild(new RAssemblyPanel("palette_scroll_track", 178, 187, 6, 348, "#0d1625"));
+        this.addChild(new RAssemblyPanel("palette_scroll_thumb", 179, 187, 4, 348, "#27c9b5"));
+
+        this.createHitButton(
+            "palette_scroll_track_hit", 177, 187, 8, 348, null,
+            () => {
+                if (this._paletteThumbPressed) return;
+                const thumbY = this.getPaletteThumbY();
+                this.paletteScroll = Math.max(0, Math.min(
+                    this.paletteScrollMax,
+                    this.paletteScroll + (mouseY < thumbY ? -220 : 220)
+                ));
+                this.syncPaletteNodes();
+            }
+        );
+        this._paletteThumbButton = this.createHitButton(
+            "palette_scroll_thumb_hit", 177, 187, 8, 348,
+            () => {
+                this._paletteThumbPressed = true;
+                this.paletteScrollbarDrag = true;
+                this.paletteScrollbarGrab = mouseY - this.getPaletteThumbY();
+            }
+        );
 
         this.addChild(new RAssemblyLabel("palette_hint_1", "Arrastra un bloque al área →", 12, 552, 8, "#bed7e0"));
         this.addChild(new RAssemblyLabel("palette_hint_2", "Clic en ✕ para borrarlo.", 12, 566, 8, "#bed7e0"));
@@ -587,6 +850,34 @@ class RAssemblyEditor extends Scene {
         this.addChild(new RAssemblyPanel("scroll_thumb", 779, this.getThumbY(), 12, this.getThumbHeight(), "#27c9b5"));
         this.addChild(new RAssemblyPanel("scroll_thumb_shine", 781, this.getThumbY() + 2, 3, Math.max(2, this.getThumbHeight() - 4), "#8be8dc"));
 
+        this.createHitButton(
+            "scroll_track_hit",
+            778, 106, 14, 440,
+            null,
+            () => {
+                if (this._scrollbarThumbPressed) return;
+
+                const thumbY = this.getThumbY();
+                const direction = mouseY < thumbY ? -130 : 130;
+                this.scroll = Math.max(
+                    0,
+                    Math.min(this.scrollMax, this.scroll + direction)
+                );
+                this.syncBlockViews();
+                this.syncScrollNodes();
+            }
+        );
+
+        this._scrollbarThumbButton = this.createHitButton(
+            "scroll_thumb_hit",
+            778, 106, 14, 36,
+            () => {
+                this._scrollbarThumbPressed = true;
+                this.scrollbarDrag = true;
+                this.scrollbarGrab = mouseY - this.getThumbY();
+            }
+        );
+
         this.addChild(new RAssemblyPanel("workspace_footer", 198, 585, 592, 14, "#0c1422"));
         this.addChild(new RAssemblyLabel("workspace_stats", `${this.robotName}  |  Variables: ${this.countVariables()}/${this.maxVariables}  |  Instrucciones: ${this.countLines()}/${this.maxLines}`, 207, 588, 8, "#bed7e0", 570));
 
@@ -597,6 +888,15 @@ class RAssemblyEditor extends Scene {
 
         if (this.textField && this.textField.active)
             this.addChild(this.textField);
+
+        // Se agrega al final para que los botones específicos reciban primero
+        // su onReleased y este catcher finalice luego el arrastre.
+        this.createHitButton(
+            "pointer_release_catcher",
+            0, 0, 800, 600,
+            null,
+            () => this.handlePointerRelease()
+        );
     }
 
     // Sincroniza vistas por ID. Solo crea/elimina la vista cuyo bloque cambió;
@@ -610,6 +910,7 @@ class RAssemblyEditor extends Scene {
             for (const block of list || []) {
                 activeIds.add(block.id);
                 collect(block.thenBlocks);
+                collect(block.elseBlocks);
                 collect(block.body);
             }
         };
@@ -653,13 +954,16 @@ class RAssemblyEditor extends Scene {
     }
 
     setPaletteCategory(category) {
-        if (this.paletteCategory === category) return;
+        if (!this.palette[category] || this.paletteCategory === category) return;
         this.paletteCategory = category;
+        this.paletteScroll = 0;
         this.syncPaletteNodes();
+
         const colors = {
             category_flow: category === "FLUJO" ? "#27c9b5" : "#3b5265",
             category_modules: category === "MODULOS" ? "#27c9b5" : "#3b5265",
-            category_variables: category === "VARIABLES" ? "#27c9b5" : "#3b5265"
+            category_variables: category === "VARIABLES" ? "#27c9b5" : "#3b5265",
+            category_declared: category === "VARIABLES_DECLARADAS" ? "#27c9b5" : "#3b5265"
         };
         for (const [name, color] of Object.entries(colors)) {
             const button = this.getChildByName(name);
@@ -668,53 +972,169 @@ class RAssemblyEditor extends Scene {
         }
     }
 
+    getDeclaredVariableEntries() {
+        const declared = new Map();
+        const visit = list => {
+            for (const block of list || []) {
+                if (block.type === "VAR" && block.name) {
+                    declared.set(block.name, {
+                        type: "DECLARED_VAR",
+                        name: block.name,
+                        valueType: /^(VERDADERO|FALSO|true|false)$/i.test(String(block.value).trim())
+                            ? "BOOLEAN" : "NUMBER",
+                        title: block.name,
+                        color: "#65baff",
+                        desc: `Variable declarada · ${block.value}`
+                    });
+                }
+                visit(block.thenBlocks);
+                visit(block.elseBlocks);
+                visit(block.body);
+            }
+        };
+        visit(this.blocks);
+        return [...declared.values()];
+    }
+
+    buildPaletteCategoryNodes(category) {
+        for (const node of this.paletteNodesByCategory[category] || []) {
+            if (node.parent) node.parent.removeChild(node);
+        }
+
+        const entries = this.palette[category] || [];
+        const groups = [];
+        const categoryNodes = [];
+
+        entries.forEach((entry, i) => {
+            const y = this.paletteViewport.top + i * 66 - this.paletteScroll;
+            const visual = [
+                new RAssemblyPanel(`palette_shadow_${category}_${i}`, 15, y + 4, 160, 54, "#051824"),
+                new RAssemblyPanel(`palette_card_${category}_${i}`, 12, y, 160, 54, entry.color),
+                new RAssemblyPanel(`palette_card_shine_${category}_${i}`, 12, y, 160, 4, "#536c7e"),
+                new RAssemblyPanel(`palette_card_header_${category}_${i}`, 18, y + 7, 148, 24, "#162936"),
+                new RAssemblyLabel(`palette_card_title_${category}_${i}`, entry.title, 24, y + 14, entry.title.length > 15 ? 8 : 10, "#fff9e1", 132),
+                new RAssemblyLabel(`palette_card_desc_${category}_${i}`, entry.desc, 21, y + 36, 8, "#051824", 145)
+            ];
+            for (const node of visual) {
+                this.addChild(node);
+                categoryNodes.push(node);
+            }
+
+            const hitButton = this.createHitButton(
+                `palette_hit_${category}_${i}`,
+                12, y, 160, 54,
+                () => {
+                    if (this.dragging) return;
+                    this.startDrag(this.createBlock(entry), mouseX, mouseY);
+                }
+            );
+            categoryNodes.push(hitButton);
+            groups.push({ entry, visual, hitButton, y });
+        });
+
+        this.paletteNodesByCategory[category] = categoryNodes;
+        this._paletteCardGroups[category] = groups;
+    }
+
+    getPaletteThumbHeight() {
+        const count = (this.palette[this.paletteCategory] || []).length;
+        return Math.max(30, this.paletteViewport.height *
+            (this.paletteViewport.height / Math.max(this.paletteViewport.height, count * 66)));
+    }
+
+    getPaletteThumbY() {
+        const trackY = this.paletteViewport.top;
+        const trackH = this.paletteViewport.height;
+        const thumbH = this.getPaletteThumbHeight();
+        return trackY + (trackH - thumbH) *
+            (this.paletteScrollMax ? this.paletteScroll / this.paletteScrollMax : 0);
+    }
+
+    syncPaletteScrollNodes() {
+        const thumb = this.getChildByName("palette_scroll_thumb");
+        const y = this.getPaletteThumbY();
+        const h = this.getPaletteThumbHeight();
+        if (thumb) {
+            thumb.pos = new Vector2(179, y);
+            thumb.size = new Vector2(4, h);
+        }
+        if (this._paletteThumbButton) {
+            this._paletteThumbButton.pos = new Vector2(177, y);
+            this._paletteThumbButton.size = new Vector2(8, h);
+        }
+        const track = this.getChildByName("palette_scroll_track");
+        if (track) track.visible = this.paletteScrollMax > 0;
+        if (thumb) thumb.visible = this.paletteScrollMax > 0;
+        if (this._paletteThumbButton) this._paletteThumbButton.visible = this.paletteScrollMax > 0;
+    }
+
     syncPaletteNodes() {
         if (!this._uiBuilt) return;
 
-        // Construye las tres paletas una sola vez. Cambiar de categoría solo
-        // alterna visible; no destruye ni vuelve a instanciar sus Nodes.
-        if (!this._paletteBuilt) {
-            for (const [category, entries] of Object.entries(this.palette)) {
-                const categoryNodes = [];
-                for (let i = 0; i < entries.length; i++) {
-                    const entry = entries[i], y = 187 + i * 66;
-                    const nodes = [
-                        new RAssemblyPanel(`palette_shadow_${category}_${i}`, 15, y + 4, 164, 54, "#051824"),
-                        new RAssemblyPanel(`palette_card_${category}_${i}`, 12, y, 164, 54, entry.color),
-                        new RAssemblyPanel(`palette_card_shine_${category}_${i}`, 12, y, 164, 4, "#536c7e"),
-                        new RAssemblyPanel(`palette_card_header_${category}_${i}`, 18, y + 7, 152, 24, "#162936"),
-                        new RAssemblyLabel(`palette_card_title_${category}_${i}`, entry.title, 24, y + 14, entry.title.length > 15 ? 8 : 10, "#fff9e1", 140),
-                        new RAssemblyLabel(`palette_card_desc_${category}_${i}`, entry.desc, 21, y + 36, 8, "#051824", 150)
-                    ];
-                    for (const node of nodes) {
-                        node.visible = category === this.paletteCategory;
-                        categoryNodes.push(node);
-                        this.paletteNodes.push(node);
-                        this.addChild(node);
-                    }
-                }
-                this.paletteNodesByCategory[category] = categoryNodes;
-            }
-            this._paletteBuilt = true;
-            return;
+        const declaredEntries = this.getDeclaredVariableEntries();
+        const signature = JSON.stringify(declaredEntries);
+        const declaredChanged = signature !== this._declaredPaletteSignature;
+        if (declaredChanged) {
+            this._declaredPaletteSignature = signature;
+            this.palette.VARIABLES_DECLARADAS = declaredEntries;
         }
 
-        for (const [category, nodes] of Object.entries(this.paletteNodesByCategory)) {
-            const visible = category === this.paletteCategory;
-            for (const node of nodes) node.visible = visible;
+        if (!this._paletteBuilt) {
+            for (const category of Object.keys(this.palette))
+                this.buildPaletteCategoryNodes(category);
+            this._paletteBuilt = true;
+        } else if (declaredChanged) {
+            this.buildPaletteCategoryNodes("VARIABLES_DECLARADAS");
         }
+
+        const entries = this.palette[this.paletteCategory] || [];
+        this.paletteScrollMax = Math.max(
+            0,
+            entries.length * 66 - this.paletteViewport.height
+        );
+        this.paletteScroll = Math.max(0, Math.min(this.paletteScroll, this.paletteScrollMax));
+
+        for (const [category, groups] of Object.entries(this._paletteCardGroups)) {
+            const categoryVisible = category === this.paletteCategory;
+            for (const group of groups) {
+                const y = this.paletteViewport.top +
+                    (groups.indexOf(group) * 66) - this.paletteScroll;
+                const delta = y - group.y;
+                if (delta !== 0) {
+                    for (const node of group.visual)
+                        node.pos = new Vector2(node.pos.x, node.pos.y + delta);
+                    group.hitButton.pos = new Vector2(12, y);
+                    group.y = y;
+                }
+                const inViewport = y >= this.paletteViewport.top &&
+                    y + 54 <= this.paletteViewport.top + this.paletteViewport.height;
+                for (const node of group.visual) node.visible = categoryVisible && inViewport;
+                group.hitButton.visible = categoryVisible && inViewport;
+                group.hitButton.disabled = !inViewport || !!this.dragging;
+            }
+        }
+
+        this.syncPaletteScrollNodes();
     }
 
     syncScrollNodes() {
+        const thumbY = this.getThumbY();
+        const thumbH = this.getThumbHeight();
+
         const thumb = this.getChildByName("scroll_thumb");
         const shine = this.getChildByName("scroll_thumb_shine");
         if (thumb) {
-            thumb.pos = new Vector2(779, this.getThumbY());
-            thumb.size = new Vector2(12, this.getThumbHeight());
+            thumb.pos = new Vector2(779, thumbY);
+            thumb.size = new Vector2(12, thumbH);
         }
         if (shine) {
-            shine.pos = new Vector2(781, this.getThumbY() + 2);
-            shine.size = new Vector2(3, Math.max(2, this.getThumbHeight() - 4));
+            shine.pos = new Vector2(781, thumbY + 2);
+            shine.size = new Vector2(3, Math.max(2, thumbH - 4));
+        }
+
+        if (this._scrollbarThumbButton) {
+            this._scrollbarThumbButton.pos = new Vector2(778, thumbY);
+            this._scrollbarThumbButton.size = new Vector2(14, thumbH);
         }
     }
 
@@ -729,6 +1149,7 @@ class RAssemblyEditor extends Scene {
     }
 
     syncStatsNodes() {
+        if (this._uiBuilt) this.syncPaletteNodes();
         const top = this.getChildByName("stats_top");
         const footer = this.getChildByName("workspace_stats");
         if (top) top.setText(`CPU ${this.cpu}  ·  RAM ${this.countLines()}/${this.maxLines}`);
@@ -741,14 +1162,34 @@ class RAssemblyEditor extends Scene {
 
     blockText(block) {
         if (block.type === "VAR") return `VARIABLE   ${block.name} = ${block.value}`;
+        if (block.type === "ASSIGN") return `ASIGNAR   ${block.name} = ${block.value}`;
         if (block.type === "MODULE") return block.module;
         if (block.type === "PREDEFINED") return `${block.name}  : ${block.valueType}`;
         if (block.type === "OPERATOR") return block.operator === "AND" ? "Y  (AND)" : "O  (OR)";
-        if (block.type === "IF") return `SI   [ ${block.condition} ]   ENTONCES`;
+        if (block.type === "IF") return `SI   [ ${block.condition} ]   ENTONCES`; 
+        if (block.type === "ELSE") return "SINO";
         if (block.type === "WHILE") return `MIENTRAS   [ ${block.condition} ]`;
         return "BLOQUE";
     }
 
     countLines() { const source = this.generateSource(); return source ? source.split("\n").length : 0; }
-    countVariables() { let count = 0; const visit = list => { for (const b of list || []) { if (b.type === "VAR") count++; visit(b.thenBlocks); visit(b.body); } }; visit(this.blocks); return count; }
+    countVariables() { let count = 0; const visit = list => { for (const b of list || []) { if (b.type === "VAR") count++; visit(b.thenBlocks); visit(b.elseBlocks); visit(b.body); } }; visit(this.blocks); return count; }
+
+    persistProgram() {
+        const programCode = this.generateSource();
+        try { localStorage.setItem("emji.rassembly.program", programCode); } catch (_) {}
+        if (typeof BackendClient !== "undefined" && BackendClient.token()) {
+            const loadout = typeof RobotLoadout !== "undefined" ? RobotLoadout.load() : {};
+            BackendClient.saveProfile({
+                robotName: loadout.name || this.robotName,
+                loadout,
+                programCode
+            }).catch(error => console.warn("[EMJI] No se pudo sincronizar el programa:", error.message));
+        }
+    }
+
+    exit() {
+        this.persistProgram();
+        super.exit();
+    }
 }

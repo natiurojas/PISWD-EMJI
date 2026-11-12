@@ -6,6 +6,7 @@ class TextField extends Node {
         this.value = String(value);
         this.placeholder = options.placeholder || "Escribí aquí…";
         this.label = options.label || "EDITAR VALOR";
+        this.masked = options.masked === true;
         this.maxLength = options.maxLength || 48;
         this.active = false;
         this.cursor = this.value.length;
@@ -40,7 +41,6 @@ class TextField extends Node {
         return false;
     }
     draw() {
-        if (!this.active) return;
         const x = this.pos.x, y = this.pos.y, w = this.size.x, h = this.size.y;
         noStroke(); fill("#051824"); rect(x + 4, y + 4, w, h);
         fill("#162936"); rect(x, y, w, h);
@@ -48,9 +48,13 @@ class TextField extends Node {
         fill("#3b5265"); rect(x + 12, y + 28, w - 24, 30);
         noFill(); stroke("#27c9b5"); strokeWeight(2); rect(x + 12, y + 28, w - 24, 30); noStroke();
         fill("#27c9b5"); textAlign(LEFT, CENTER); textSize(10); text(this.label, x + 12, y + 17);
-        fill("#ffffff"); textSize(12); text(this.value || this.placeholder, x + 20, y + 43);
-        const cursorX = x + 20 + textWidth(this.value.slice(0, this.cursor));
-        stroke("#27c9b5"); line(cursorX, y + 32, cursorX, y + 53); noStroke();
-        fill("#9ab5c3"); textSize(9); text("ENTER: guardar    ESC: cancelar", x + 12, y + h - 13);
+        const shownValue = this.masked ? "•".repeat(this.value.length) : this.value;
+        fill(this.value ? "#ffffff" : "#9ab5c3"); textSize(12); text(shownValue || this.placeholder, x + 20, y + 43);
+        if (this.active) {
+            const cursorText = this.masked ? "•".repeat(this.cursor) : this.value.slice(0, this.cursor);
+            const cursorX = x + 20 + textWidth(cursorText);
+            stroke("#27c9b5"); line(cursorX, y + 32, cursorX, y + 53); noStroke();
+        }
+        fill("#9ab5c3"); textSize(9); text(this.active ? "TAB: cambiar campo    ENTER: continuar" : "PRESIONÁ TAB PARA CAMBIAR DE CAMPO", x + 12, y + h - 13);
     }
 }

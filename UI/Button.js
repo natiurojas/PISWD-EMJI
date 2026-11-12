@@ -89,6 +89,10 @@ class Button extends Node {
                     this.hasBeenOnPressedCalled = true;
                     this.hasBeenOnReleasedCalled = false;
 
+                    this.playSplash();
+                    if (typeof AudioPlayer !== "undefined")
+                        AudioPlayer.play("uiClick");
+
                     if(typeof this.onPressed === "function")
                         this.onPressed(this);
                 }
@@ -125,8 +129,33 @@ class Button extends Node {
         }
     }
 
+    playSplash()
+    {
+        if (typeof Animation === "undefined")
+            return;
+
+        if (this._splashAnimation && this._splashAnimation.isPlaying())
+            this._splashAnimation.stop();
+
+        this.scale = new Vector2(1, 1);
+        this._splashAnimation = new Animation()
+            .setFrames(12)
+            .to(1, 5, this, {
+                scaleX: { from: 1, to: 1.075 },
+                scaleY: { from: 1, to: 1.075 }
+            }, "EASEINOUT")
+            .to(5, 12, this, {
+                scaleX: { from: 1.075, to: 1 },
+                scaleY: { from: 1.075, to: 1 }
+            }, "EASEINOUT")
+            .play();
+    }
+
     free()
     {
+        if (this._splashAnimation && this._splashAnimation.isPlaying())
+            this._splashAnimation.stop();
+        this._splashAnimation = null;
         this.surface = null;
 
         this.onPressed = null;

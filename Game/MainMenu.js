@@ -52,6 +52,9 @@ class MainMenu extends Scene {
         RFUI.button(this, "BATALLA MANUAL", 42, 497, 190, 43, () => Scene.change(new FightScene(null, "wonderwall", "manual")), {
             name: "ManualBattleButton", fontSize: 9, color: "#164A42", hoverColor: "#1D6659", border: RFUI.COLORS.green
         });
+        RFUI.button(this, "SALAS", 242, 497, 140, 43, () => Scene.change(new RoomsScene()), {
+            name: "RoomsButton", fontSize: 10, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
+        });
         RFUI.button(this, "NIVELES", 42, 444, 110, 43, () => Scene.change(new LevelsScene()), {
             name: "LevelsButton", fontSize: 10, color: "#123A48", hoverColor: "#195466", border: RFUI.COLORS.cyan
         });
@@ -61,8 +64,8 @@ class MainMenu extends Scene {
         RFUI.button(this, "OPCIONES", 288, 444, 94, 43, () => Scene.change(new SettingsScene()), {
             name: "SettingsButton", fontSize: 8, color: "#191F3D", hoverColor: "#2C3560", border: RFUI.COLORS.purple
         });
-        RFUI.label(this, "VERSIÓN ESCOLAR  •  MULTIJUGADOR EN PREPARACIÓN", 246, 506, 6, RFUI.COLORS.muted);
-        RFUI.label(this, "RAssembly convierte tus bloques en decisiones de combate.", 246, 523, 7, RFUI.COLORS.muted);
+        RFUI.label(this, "VERSIÓN ESCOLAR  •  LABORATORIO DE ROBOTS", 420, 506, 6, RFUI.COLORS.muted);
+        RFUI.label(this, "RAssembly convierte tus bloques en decisiones de combate.", 420, 523, 7, RFUI.COLORS.muted);
 
         // Tarjeta ilustrada de la nave.
         RFUI.panel(this, 420, 91, 335, 286, "#091A29", "#1D465B", 1, "ShipShowcase");

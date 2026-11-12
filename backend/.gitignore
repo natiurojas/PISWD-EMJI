@@ -1,0 +1,5 @@
+node_modules/
+emji.sqlite
+emji.sqlite-shm
+emji.sqlite-wal
+.env

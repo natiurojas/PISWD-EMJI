@@ -6,12 +6,18 @@ class LoginScene extends Scene {
         this.type = "UI";
 
         this.username = "";
-        this.maxLength = 14;
+        this.password = "";
+        this.mode = "login";
+        this.inputFocus = "username";
+        this.maxLength = 18;
 
         this.title = null;
         this.subtitle = null;
         this.label = null;
         this.cursor = null;
+        this.passwordLabel = null;
+        this.passwordCursor = null;
+        this.modeButton = null;
         this.message = null;
         this.createBtn = null;
 
@@ -64,31 +70,22 @@ class LoginScene extends Scene {
         );
         this.addChild(this.subtitle);
 
-        // Caja de texto
-        const box = new Panel();
-        box.name = "InputBox";
-        box.pos = new Vector2(200, 250);
-        box.size = new Vector2(400, 64);
-        box.color = new Color("#0C2333");
-        box.borderColor = new Color(RFUI.COLORS.cyan);
-        box.borderSize = 3;
-        this.addChild(box);
+        // Campos de entrada reutilizables del motor. Se mantienen visibles incluso
+        // cuando no tienen el foco; la contraseña se representa siempre enmascarada.
+        RFUI.label(this, "USUARIO", 200, 181, 8, RFUI.COLORS.muted);
+        this.usernameField = new TextField(this.username, {
+            x: 200, y: 194, width: 400, height: 68, maxLength: this.maxLength,
+            placeholder: "Tu nombre de piloto", label: "NOMBRE DE USUARIO"
+        });
+        this.usernameField.active = true;
+        this.addChild(this.usernameField);
 
-        this.label = new Label();
-        this.label.name = "UsernameLabel";
-        this.label.text = "";
-        this.label.fontSize = 30;
-        this.label.color = new Color("white");
-        this.label.updateSize();
-        this.label.pos = new Vector2(18, 17);
-        box.addChild(this.label);
-
-        this.cursor = new Panel();
-        this.cursor.name = "Cursor";
-        this.cursor.size = new Vector2(3, 34);
-        this.cursor.pos = new Vector2(18, 15);
-        this.cursor.color = new Color(RFUI.COLORS.cyan);
-        box.addChild(this.cursor);
+        RFUI.label(this, "CONTRASEÑA", 200, 274, 8, RFUI.COLORS.muted);
+        this.passwordField = new TextField("", {
+            x: 200, y: 287, width: 400, height: 68, maxLength: 64,
+            placeholder: "Tu contraseña", label: "CONTRASEÑA", masked: true
+        });
+        this.addChild(this.passwordField);
 
         // Mensaje de estado
         this.message = new Label();
@@ -97,15 +94,26 @@ class LoginScene extends Scene {
         this.message.fontSize = 16;
         this.message.color = new Color("red");
         this.message.updateSize();
-        this.message.pos = new Vector2(200, 330);
+        this.message.pos = new Vector2(200, 350);
         this.addChild(this.message);
 
         // Botón
         this.createBtn = this.makeButton("Crear");
         this.createBtn.name = "CreateBtn";
-        this.createBtn.pos = new Vector2(250, 390);
+        this.createBtn.pos = new Vector2(250, 395);
         this.createBtn.onReleased = () => this.confirm();
         this.addChild(this.createBtn);
+
+        this.modeButton = RFUI.button(
+            this, "¿NO TENÉS CUENTA? REGISTRATE",
+            250, 474, 300, 38,
+            () => {
+                Scene.change(this.mode === "login"
+                    ? new RegisterScene()
+                    : new LoginScene());
+            },
+            { name: "AccountModeButton", fontSize: 8, color: "#102B3B", hoverColor: "#174556" }
+        );
 
         // Ratcon presenta el objetivo del juego mientras creás tu perfil.
         this.ratcon = new RatconDialogBox(
@@ -113,26 +121,15 @@ class LoginScene extends Scene {
             "greet",
             { width: 155, height: 83, bubbleOffset: 47, mascotScale: 0.15, textSize: 7 }
         );
-        this.ratcon.pos = new Vector2(7, 369);
+        this.ratcon.pos = new Vector2(7, 435);
         this.addChild(this.ratcon);
-        RFUI.label(this, "CREÁ TU PERFIL PARA EMPEZAR", 28, 347, 7, RFUI.COLORS.cyan);
+        RFUI.label(this, "CUENTA DE PILOTO EMJI", 28, 420, 7, RFUI.COLORS.cyan);
 
         // Si ya existe un usuario, precargamos su nombre para iniciar sesión.
         const existing = User.load();
-        if (existing !== null) {
-            this.username = existing.name;
-            this.updateInput();
-        }
-        else {
-            this.refreshMode();
-        }
-
-        // Entrada de teclado.
-        this.keyDownListener = (keyCode) => this.onKeyDown(keyCode);
-        Game.instance.keyManager.addEventListener(
-            this.keyDownListener,
-            "DOWN"
-        );
+        if (existing !== null) this.username = existing.name;
+        this.syncTextFields();
+        this.refreshMode();
 
         console.log("¡El login comenzó!");
     }
@@ -178,106 +175,120 @@ class LoginScene extends Scene {
     }
 
     refreshMode() {
-        const name = this.username.trim();
-        const existing = name.length > 0 ? User.find(name) : null;
+        const registering = this.mode === "register";
+        this.title.setText(registering ? "CREAR CUENTA" : "INICIAR SESIÓN");
+        this.subtitle.setText(registering
+            ? "Elegí un usuario y una contraseña segura"
+            : "Ingresá tus credenciales para continuar");
         const btnLabel = this.createBtn.getChildByName("BtnLabel");
-
-        if (existing !== null) {
-            this.title.setText("INICIAR SESIÓN");
-            this.subtitle.setText("Usuario encontrado. Presioná Enter.");
-            btnLabel.setText("Entrar");
-            this.message.color = new Color(RFUI.COLORS.cyan);
-            this.message.setText(
-                `Récord de ${existing.name}: ${existing.highScore}`
-            );
+        if (btnLabel) btnLabel.setText(registering ? "Registrarme" : "Entrar");
+        if (this.modeButton && this.modeButton.label) {
+            this.modeButton.label.text = registering
+                ? "¿YA TENÉS CUENTA? INICIÁ SESIÓN"
+                : "¿NO TENÉS CUENTA? REGISTRATE";
+            this.modeButton.label.mustBeRerendered = true;
         }
-        else if (name.length > 0) {
-            this.title.setText("CREAR USUARIO");
-            this.subtitle.setText("Ese nombre está disponible.");
-            btnLabel.setText("Crear");
-            this.message.color = new Color(RFUI.COLORS.cyan);
-            this.message.setText("El usuario se guardará al confirmar.");
-        }
-        else {
-            this.title.setText("CREAR USUARIO");
-            this.subtitle.setText("Escribí un nombre para comenzar");
-            btnLabel.setText("Crear");
-            this.message.setText("");
-        }
-
-        this.centerLabel(this.title, 105);
-        this.centerLabel(this.subtitle, 151);
+        this.centerLabel(this.title, 92);
+        this.centerLabel(this.subtitle, 139);
     }
 
-    onKeyDown(keyCode) {
-        if (this.pendingChange)
-            return;
-
-        if (keyCode === 8) {
-            this.username = this.username.slice(0, -1);
+    syncTextFields() {
+        if (!this.usernameField || !this.passwordField) return;
+        if (this.usernameField.value !== this.username) {
+            this.usernameField.value = this.username;
+            this.usernameField.cursor = this.username.length;
         }
-        else if (keyCode === 13) {
+        if (this.passwordField.value !== this.password) {
+            this.passwordField.value = this.password;
+            this.passwordField.cursor = this.password.length;
+        }
+        this.usernameField.active = this.inputFocus === "username";
+        this.passwordField.active = this.inputFocus === "password";
+    }
+
+    handleTextFieldKey(code, key) {
+        if (this.pendingChange) return true;
+        if (code === 9) {
+            this.inputFocus = this.inputFocus === "username" ? "password" : "username";
+            this.syncTextFields();
+            return true;
+        }
+        const field = this.inputFocus === "username" ? this.usernameField : this.passwordField;
+        if (!field) return false;
+        if (code === 13) {
+            this.username = this.usernameField.value;
+            this.password = this.passwordField.value;
             this.confirm();
-            return;
+            return true;
         }
-        else if (
-            typeof key === "string" &&
-            key.length === 1 &&
-            this.username.length < this.maxLength &&
-            /[a-zA-Z0-9_ ]/.test(key)
-        ) {
-            this.username += key;
-        }
-
-        this.updateInput();
+        const handled = field.keyPressed(code, key);
+        this.username = this.usernameField.value;
+        this.password = this.passwordField.value;
+        return handled;
     }
 
-    updateInput() {
-        this.label.setText(this.username);
-
-        this.cursor.pos = new Vector2(
-            18 + this.label.size.x + 2,
-            15
-        );
-        this.cursor.visible = true;
-        this.blinkTimer = 0;
-
-        if (this.createBtn !== null)
-            this.refreshMode();
+    handleTextFieldCharacter(character) {
+        if (this.pendingChange) return;
+        const field = this.inputFocus === "username" ? this.usernameField : this.passwordField;
+        if (field) field.inputCharacter(character);
+        this.username = this.usernameField.value;
+        this.password = this.passwordField.value;
     }
 
-    confirm() {
-        if (this.pendingChange)
-            return;
-
+    async confirm() {
+        if (this.pendingChange) return;
+        if (this.usernameField) this.username = this.usernameField.value;
+        if (this.passwordField) this.password = this.passwordField.value;
         const name = this.username.trim();
-
-        if (name.length === 0) {
+        if (!name || name.length < 3) {
             this.message.color = new Color("red");
-            this.message.setText("El nombre no puede estar vacío");
+            this.message.setText("El usuario debe tener al menos 3 caracteres.");
+            return;
+        }
+        if (this.password.length < 8) {
+            this.message.color = new Color("red");
+            this.message.setText("La contraseña debe tener al menos 8 caracteres.");
+            this.inputFocus = "password";
+            this.syncTextFields();
             return;
         }
 
-        const existing = User.find(name);
-        const user = User.login(name);
+        this.createBtn.disabled = true;
+        this.message.color = new Color(RFUI.COLORS.orange);
+        this.message.setText("Conectando con el servidor...");
 
-        if (user === null || !User.save(user)) {
-            this.message.color = new Color("red");
-            this.message.setText("No se pudo guardar el usuario");
-            return;
+        try {
+            const remoteUser = this.mode === "register"
+                ? await BackendClient.register(name, this.password)
+                : await BackendClient.login(name, this.password);
+
+            let user = User.login(remoteUser.username);
+            if (!user) user = new User(remoteUser.username);
+            User.save(user);
+            Game.instance.user = user;
+
+            if (typeof RobotLoadout !== "undefined" && remoteUser.loadout) {
+                const restoredLoadout = {
+                    ...RobotLoadout.defaults(),
+                    ...remoteUser.loadout,
+                    name: remoteUser.robotName || remoteUser.loadout.name || "RF-01"
+                };
+                RobotLoadout.save(restoredLoadout);
+            }
+            if (typeof localStorage !== "undefined" && remoteUser.programCode) {
+                try { localStorage.setItem("emji.rassembly.program", remoteUser.programCode); }
+                catch (_) {}
+            }
+
+            this.message.color = new Color(RFUI.COLORS.green);
+            this.message.setText(`Bienvenido, ${remoteUser.username}.`);
+            this.pendingChange = true;
+            this.changeTimer = 0.8;
+        } catch (error) {
+            this.message.color = new Color(RFUI.COLORS.red);
+            this.message.setText(error.message || "No se pudo conectar con el servidor.");
+            this.createBtn.disabled = false;
         }
-
-        Game.instance.user = user;
-
-        this.message.color = new Color(RFUI.COLORS.cyan);
-        this.message.setText(
-            existing !== null
-                ? `Bienvenido, ${user.name}. Récord: ${user.highScore}`
-                : `Usuario '${user.name}' creado y guardado`
-        );
-
-        this.pendingChange = true;
-        this.changeTimer = 0.8;
     }
 
     tick(dt) {
@@ -292,22 +303,19 @@ class LoginScene extends Scene {
             return;
         }
 
-        this.blinkTimer += dt;
-        if (this.blinkTimer >= 0.5) {
-            this.blinkTimer = 0;
-            this.cursor.visible = !this.cursor.visible;
-        }
+
     }
 
     exit() {
-        if (this.keyDownListener !== null) {
-            Game.instance.keyManager.removeEventListener(
-                this.keyDownListener,
-                "DOWN"
-            );
-            this.keyDownListener = null;
-        }
-
         super.exit();
+    }
+}
+
+
+class RegisterScene extends LoginScene {
+    constructor() {
+        super();
+        this.name = "RegisterScene";
+        this.mode = "register";
     }
 }

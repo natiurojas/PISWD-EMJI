@@ -20,6 +20,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // Archivos que nunca deben servirse como contenido estático.
 const PRIVATE_FILES = new Set(["server.js", "chat.config.json", "chat.config.local.json"]);
+const PRIVATE_DIRS = new Set(["backend"]);
 
 const MIME = {
     ".html": "text/html; charset=utf-8",
@@ -860,7 +861,8 @@ const staticFiles = new Map();
 
 function preloadStaticFiles(dir = ROOT) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".") || entry.name === "node_modules" || PRIVATE_FILES.has(entry.name))
+        if (entry.name.startsWith(".") || entry.name === "node_modules" ||
+            PRIVATE_DIRS.has(entry.name) || PRIVATE_FILES.has(entry.name))
             continue;
 
         const absolute = path.join(dir, entry.name);

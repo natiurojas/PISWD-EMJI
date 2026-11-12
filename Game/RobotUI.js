@@ -138,16 +138,16 @@ class RobotLoadout {
     static COMPONENTS = {
         cpu: {
             title: "CPU", subtitle: "Velocidad de ejecución del código", items: [
-                { id: "eco", name: "ECO", detail: "6 ciclos por turno", cycles: 6 },
-                { id: "balanced", name: "EQUILIBRADA", detail: "10 ciclos por turno", cycles: 10 },
-                { id: "tactical", name: "TÁCTICA", detail: "15 ciclos por turno", cycles: 15 }
+                { id: "eco", name: "ECO", detail: "6 ciclos · peso +1", cycles: 6, weight: 1 },
+                { id: "balanced", name: "EQUILIBRADA", detail: "10 ciclos · peso +2", cycles: 10, weight: 2 },
+                { id: "tactical", name: "TÁCTICA", detail: "15 ciclos · peso +3", cycles: 15, weight: 3 }
             ]
         },
         ram: {
             title: "RAM", subtitle: "Capacidad de programa y variables", items: [
-                { id: "ram12", name: "12 BLOQUES", detail: "Hasta 12 bloques / 4 variables", blocks: 12, vars: 4 },
-                { id: "ram20", name: "20 BLOQUES", detail: "Hasta 20 bloques / 8 variables", blocks: 20, vars: 8 },
-                { id: "ram32", name: "32 BLOQUES", detail: "Hasta 32 bloques / 12 variables", blocks: 32, vars: 12 }
+                { id: "ram12", name: "12 BLOQUES", detail: "12 bloques / 4 variables · peso +1", blocks: 12, vars: 4, weight: 1 },
+                { id: "ram20", name: "20 BLOQUES", detail: "20 bloques / 8 variables · peso +2", blocks: 20, vars: 8, weight: 2 },
+                { id: "ram32", name: "32 BLOQUES", detail: "32 bloques / 12 variables · peso +3", blocks: 32, vars: 12, weight: 3 }
             ]
         },
         chassis: {
@@ -177,11 +177,25 @@ class RobotLoadout {
                 { id: "reinforced", name: "REFORZADO", detail: "Duración 3,5 s · peso +3", duration: 3.5, weight: 3 },
                 { id: "phase", name: "FASE", detail: "Duración 2,5 s · peso +2", duration: 2.5, weight: 2 }
             ]
+        },
+        thrusters: {
+            title: "PROPULSIÓN", subtitle: "Ajusta la aceleración y el peso", items: [
+                { id: "ion", name: "IÓN", detail: "+1,8 velocidad · peso +1", speed: 1.8, weight: 1 },
+                { id: "vector", name: "VECTORIAL", detail: "+2,8 velocidad · peso +2", speed: 2.8, weight: 2 },
+                { id: "stabilizer", name: "ESTABILIZADOR", detail: "+1,2 velocidad · peso +0", speed: 1.2, weight: 0 }
+            ]
+        },
+        armor: {
+            title: "BLINDAJE", subtitle: "Protección adicional con coste de peso", items: [
+                { id: "ceramic", name: "CERÁMICO", detail: "+2 blindaje · +10 HP · peso +2", armor: 2, hp: 10, weight: 2 },
+                { id: "reactive", name: "REACTIVO", detail: "+3 blindaje · +5 HP · peso +3", armor: 3, hp: 5, weight: 3 },
+                { id: "nano", name: "NANOFIBRA", detail: "+1 blindaje · +18 HP · peso +2", armor: 1, hp: 18, weight: 2 }
+            ]
         }
     };
 
     static defaults() {
-        return { cpu: "balanced", ram: "ram20", chassis: "assault", cannons: "double", radar: "tactical", shield: "pulse" };
+        return { name: "RF-01", cpu: "balanced", ram: "ram20", chassis: "assault", cannons: "double", radar: "tactical", shield: "pulse", thrusters: "ion", armor: "ceramic" };
     }
     static load() {
         try {
@@ -205,10 +219,19 @@ class RobotLoadout {
         const shield = this.selected("shield", loadout);
         const cpu = this.selected("cpu", loadout);
         const ram = this.selected("ram", loadout);
-        const totalWeight = chassis.weight + cannon.weight + radar.weight + shield.weight;
-        const speed = Math.max(1, chassis.speed - Math.max(0, totalWeight - chassis.weight) * 0.35);
+        const thrusters = this.selected("thrusters", loadout);
+        const armor = this.selected("armor", loadout);
+        const totalWeight = chassis.weight + cannon.weight + radar.weight +
+            shield.weight + cpu.weight + ram.weight + thrusters.weight + armor.weight;
+        const speed = Math.max(
+            1,
+            chassis.speed + thrusters.speed -
+            Math.max(0, totalWeight - chassis.weight) * 0.35
+        );
         return {
-            hp: chassis.hp, armor: chassis.armor, weight: totalWeight, speed,
+            hp: chassis.hp + armor.hp,
+            armor: chassis.armor + armor.armor,
+            weight: totalWeight, speed,
             slots: chassis.slots, cannons: cannon.count, damage: cannon.damage,
             radar: radar.range, shield: shield.duration, cpu: cpu.cycles,
             blocks: ram.blocks, vars: ram.vars

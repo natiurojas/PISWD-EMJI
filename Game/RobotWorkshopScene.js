@@ -7,6 +7,10 @@ class RobotWorkshopScene extends Scene {
         this.activeCategory = "chassis";
         this.statusText = "Elegí cada módulo y guardá tu configuración.";
         this.optionButtons = [];
+        this.nameField = new TextField(this.loadout.name || "RF-01", {
+            x: 250, y: 230, width: 300, height: 96, maxLength: 18,
+            placeholder: "Nombre del robot"
+        });
     }
 
     static preload() {
@@ -29,11 +33,12 @@ class RobotWorkshopScene extends Scene {
 
         const categoryList = [
             ["cpu", "CPU"], ["ram", "RAM"], ["chassis", "CHASIS"],
-            ["cannons", "CAÑONES"], ["radar", "RADAR"], ["shield", "ESCUDO"]
+            ["cannons", "CAÑONES"], ["radar", "RADAR"], ["shield", "ESCUDO"],
+            ["thrusters", "PROPULSIÓN"], ["armor", "BLINDAJE"]
         ];
         this.categoryButtons = {};
         categoryList.forEach(([key, text], i) => {
-            const btn = RFUI.button(this, text, 35, 141 + i * 48, 155, 39, () => {
+            const btn = RFUI.button(this, text, 35, 141 + i * 37, 155, 32, () => {
                 this.activeCategory = key;
                 this.renderOptions();
             }, { name: `Category_${key}`, fontSize: 10, color: "#102B3B", hoverColor: "#174556" });
@@ -52,6 +57,23 @@ class RobotWorkshopScene extends Scene {
         ship.scale = new Vector2(0.31, 0.31);
         ship.pos = new Vector2(562, 174);
         this.addChild(ship);
+
+        this.robotNameButton = RFUI.button(
+            this, `NOMBRE: ${this.loadout.name || "RF-01"}`,
+            508, 275, 250, 29,
+            () => {
+                if (this.nameField.parent !== this) this.addChild(this.nameField);
+                this.nameField.open(this.loadout.name || "RF-01", "NOMBRE DEL ROBOT", value => {
+                    const normalized = String(value || "").trim().replace(/[^\w -]/g, "").slice(0, 18);
+                    this.loadout.name = normalized || "RF-01";
+                    this.robotNameButton.label.text = `NOMBRE: ${this.loadout.name}`;
+                    this.robotNameButton.label.mustBeRerendered = true;
+                    if (this.nameField.parent === this) this.removeChild(this.nameField);
+                    this.updateStats();
+                });
+            },
+            { name: "RobotNameButton", fontSize: 7, color: "#102B3B", hoverColor: "#174556" }
+        );
 
         this.statLabels = {};
         const stats = [
@@ -85,6 +107,16 @@ class RobotWorkshopScene extends Scene {
 
         this.renderOptions();
         this.updateStats();
+    }
+
+    handleTextFieldKey(code, key) {
+        if (!this.nameField || !this.nameField.active) return false;
+        return this.nameField.keyPressed(code, key);
+    }
+
+    handleTextFieldCharacter(character) {
+        if (this.nameField && this.nameField.active)
+            this.nameField.inputCharacter(character);
     }
 
     renderOptions() {
@@ -136,14 +168,36 @@ class RobotWorkshopScene extends Scene {
             cpu: `${stats.cpu} c/t`, blocks: `${stats.blocks} bloques`, shield: `${stats.shield} s`
         };
         Object.entries(format).forEach(([key, value]) => this.statLabels[key].setText(value));
-        this.tip.setMessage(`Tu chasis soporta ${stats.slots} cañones. Tenés ${stats.cannons}; la velocidad final depende del peso total.`, "point_right");
+        this.tip.setMessage(`CPU y RAM también pesan. Tu unidad suma ${stats.weight} u; la propulsión compensa parte del peso.`, "point_right");
     }
 
     saveLoadout() {
         const saved = RobotLoadout.save(this.loadout);
-        this.statusText = saved ? "Configuración guardada en este navegador." : "No se pudo guardar; revisá el almacenamiento del navegador.";
+        this.statusText = saved
+            ? "Configuración guardada en este navegador."
+            : "No se pudo guardar; revisá el almacenamiento del navegador.";
         this.status.color = new Color(saved ? RFUI.COLORS.green : RFUI.COLORS.red);
         this.status.setText(this.statusText);
+
+        if (saved && typeof BackendClient !== "undefined" && BackendClient.token()) {
+            const programCode = (() => {
+                try { return localStorage.getItem("emji.rassembly.program") || ""; }
+                catch (_) { return ""; }
+            })();
+            BackendClient.saveProfile({
+                robotName: this.loadout.name || "RF-01",
+                loadout: this.loadout,
+                programCode
+            }).then(() => {
+                this.statusText = "Configuración sincronizada con el servidor.";
+                this.status.color = new Color(RFUI.COLORS.green);
+                this.status.setText(this.statusText);
+            }).catch(error => {
+                this.statusText = `Guardado local; servidor: ${error.message}`;
+                this.status.color = new Color(RFUI.COLORS.orange);
+                this.status.setText(this.statusText);
+            });
+        }
     }
 
     saveAndReturn() {

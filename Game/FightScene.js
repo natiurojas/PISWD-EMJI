@@ -32,6 +32,7 @@ class FightScene extends Scene {
         this.playerShieldTimer = 0;
         this.playerShieldCooldown = 0;
         this.playerEvasionTimer = 0;
+        this.playerRepairCooldown = 0;
         this.playerLaserTimer = 0;
         this.enemyLaserTimer = 0;
         this.enemyFireTimer = this.level.openingDelay ?? 1.4;
@@ -54,9 +55,14 @@ class FightScene extends Scene {
     }
 
     onStart() {
+        if (typeof AudioPlayer !== "undefined") AudioPlayer.play("battleStart");
         const loadout = typeof RobotLoadout !== "undefined"
             ? RobotLoadout.load()
             : null;
+
+        this.robotName = loadout && loadout.name
+            ? loadout.name
+            : (typeof User !== "undefined" && User.load() ? User.load().name : "RF-01");
 
         this.stats = typeof RobotLoadout !== "undefined"
             ? RobotLoadout.stats(loadout)
@@ -239,6 +245,21 @@ class FightScene extends Scene {
         this.robot.registerModule("MOVER_DERECHA", () => this.moveRobot(1, 0));
         this.robot.registerModule("MOVER_ARRIBA", () => this.moveRobot(0, -1));
         this.robot.registerModule("MOVER_ABAJO", () => this.moveRobot(0, 1));
+        this.robot.registerModule("ACERCARSE", () => this.moveTowardEnemy(1));
+        this.robot.registerModule("ALEJARSE", () => this.moveTowardEnemy(-1));
+        this.robot.registerModule("ESQUIVAR", () => {
+            this.playerEvasionTimer = Math.max(this.playerEvasionTimer, 1.1);
+        });
+        this.robot.registerModule("REPARAR", () => {
+            if (this.playerRepairCooldown <= 0) {
+                this.playerHp = Math.min(this.playerMaxHp, this.playerHp + 12);
+                this.playerRepairCooldown = 5;
+                this.updateHud();
+            }
+        });
+        this.robot.registerModule("RECARGAR_ENERGIA", () => {
+            this.energy = Math.min(100, this.energy + 18);
+        });
         this.robot.registerModule("GIRAR", () => {});
         this.robot.registerModule("IMPRIMIR", () => {});
 
@@ -265,7 +286,7 @@ class FightScene extends Scene {
             { align: CENTER, width: 600 }
         );
 
-        RFUI.label(this, "RF-01", 28, 8, 8, RFUI.COLORS.white);
+        RFUI.label(this, this.robotName || "RF-01", 28, 8, 8, RFUI.COLORS.white);
         this.playerHpLabel = RFUI.label(
             this,
             "",
@@ -402,6 +423,17 @@ class FightScene extends Scene {
         this.robotMove.x = x; this.robotMove.y = y; this.robotMove.time = 0.22;
     }
 
+    moveTowardEnemy(direction = 1) {
+        const playerCenterX = this.playerX + this.playerWidth / 2;
+        const playerCenterY = this.playerY + this.playerHeight / 2;
+        const enemyCenterX = this.enemyX + this.enemyWidth / 2;
+        const enemyCenterY = this.enemyY + this.enemyHeight / 2;
+        const dx = enemyCenterX - playerCenterX;
+        const dy = enemyCenterY - playerCenterY;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        this.moveRobot((dx / distance) * direction, (dy / distance) * direction);
+    }
+
     playerShoot() {
         if (this.finished || this.playerFireCooldown > 0)
             return;
@@ -417,6 +449,7 @@ class FightScene extends Scene {
         );
 
         this.spawnProjectile(damage);
+        if (typeof AudioPlayer !== "undefined") AudioPlayer.play("laser");
 
         this.showLaser(
             this.playerLaser,
@@ -439,30 +472,66 @@ class FightScene extends Scene {
     spawnProjectile(damage) {
         const projectile = new Panel();
         projectile.name = "PlayerProjectile";
-        projectile.pos = new Vector2(this.playerX + this.playerWidth, this.playerY + this.playerHeight / 2);
         projectile.size = new Vector2(10, 5);
         projectile.color = new Color(RFUI.COLORS.cyan);
         projectile.borderSize = 0;
+
+        // Apunta al centro actual del enemigo en lugar de avanzar siempre
+        // horizontalmente. Esto mantiene el disparo alineado con el objetivo
+        // aunque el robot y el enemigo estén a distintas alturas.
+        const startX = this.playerX + this.playerWidth * 0.5;
+        const startY = this.playerY + this.playerHeight * 0.5;
+        const targetX = this.enemyX + this.enemyWidth * 0.5;
+        const targetY = this.enemyY + this.enemyHeight * 0.5;
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const length = Math.max(1, Math.hypot(dx, dy));
+        const speed = 520;
+
+        projectile.pos = new Vector2(startX, startY);
         this.addChild(projectile);
-        this.projectiles.push({ node: projectile, x: projectile.pos.x, y: projectile.pos.y, damage, speed: 520 });
+        this.projectiles.push({
+            node: projectile,
+            x: startX, y: startY,
+            vx: (dx / length) * speed,
+            vy: (dy / length) * speed,
+            damage
+        });
     }
 
     updateProjectiles(dt) {
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
             const p = this.projectiles[i];
-            p.x += p.speed * dt; p.node.pos = new Vector2(p.x, p.y);
-            const hit = p.x >= this.enemyX && p.x <= this.enemyX + this.enemyWidth && p.y >= this.enemyY && p.y <= this.enemyY + this.enemyHeight;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.node.pos = new Vector2(p.x, p.y);
+
+            const hit =
+                p.x + p.node.size.x >= this.enemyX &&
+                p.x <= this.enemyX + this.enemyWidth &&
+                p.y + p.node.size.y >= this.enemyY &&
+                p.y <= this.enemyY + this.enemyHeight;
+
             if (hit) {
-                this.enemyHp = Math.max(0, this.enemyHp - p.damage); this.damageDealt += p.damage;
-                this.removeChild(p.node); this.projectiles.splice(i, 1);
+                this.enemyHp = Math.max(0, this.enemyHp - p.damage);
+                this.damageDealt += p.damage;
+                this.removeChild(p.node);
+                this.projectiles.splice(i, 1);
                 if (this.enemyHp <= 0) this.finish(true);
-            } else if (p.x > 820) { this.removeChild(p.node); this.projectiles.splice(i, 1); }
+            } else if (
+                p.x < -20 || p.x > 820 ||
+                p.y < -20 || p.y > 620
+            ) {
+                this.removeChild(p.node);
+                this.projectiles.splice(i, 1);
+            }
         }
     }
 
     activateShield() {
         if (this.finished || this.playerShieldCooldown > 0)
             return;
+        if (typeof AudioPlayer !== "undefined") AudioPlayer.play("shield");
 
         this.playerShieldTimer = this.stats.shield;
         this.playerShieldCooldown = 4.5;
@@ -544,6 +613,7 @@ class FightScene extends Scene {
         this.playerShieldCooldown = Math.max(0, this.playerShieldCooldown - dt);
         this.playerShieldTimer = Math.max(0, this.playerShieldTimer - dt);
         this.playerEvasionTimer = Math.max(0, this.playerEvasionTimer - dt);
+        this.playerRepairCooldown = Math.max(0, this.playerRepairCooldown - dt);
         this.playerLaserTimer = Math.max(0, this.playerLaserTimer - dt);
         this.enemyLaserTimer = Math.max(0, this.enemyLaserTimer - dt);
 
@@ -708,8 +778,14 @@ class FightScene extends Scene {
             this.score = Math.round(this.damageDealt * 0.5);
         }
 
+        if (typeof AudioPlayer !== "undefined")
+            AudioPlayer.play(victory ? "victory" : "defeat");
         if (typeof User !== "undefined")
             User.recordScore(this.score);
+        if (typeof BackendClient !== "undefined" && BackendClient.token()) {
+            BackendClient.submitScore(this.score)
+                .catch(error => console.warn("[EMJI] No se pudo guardar el puntaje online:", error.message));
+        }
 
         this.showResult();
     }
