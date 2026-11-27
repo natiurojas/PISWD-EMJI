@@ -1,27 +1,12 @@
-/*
- * EMJI Multiplayer Backend
- * Node.js >= 22.5 (node:sqlite) + ws
- *
- * El host ejecuta la simulación de combate en su PC. Este servidor autentica,
- * administra salas y retransmite mensajes entre host y clientes; no simula el
- * combate ni confía en puntajes enviados sin validar identidad.
- */
-"use strict";
+const WebSocket = require("ws");
 
-const http = require("node:http");
-const crypto = require("node:crypto");
-const { DatabaseSync } = require("node:sqlite");
-const { WebSocketServer, WebSocket } = require("ws");
+const PORT = Number(process.env.PORT || 8080);
+const HOST = process.env.HOST || "0.0.0.0";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
-const PORT = Number(process.env.GAME_BACKEND_PORT || 3100);
-const HOST = process.env.GAME_BACKEND_HOST || "0.0.0.0";
-const DB_FILE = process.env.GAME_DB_FILE || `${__dirname}/emji.sqlite`;
-const TOKEN_SECRET = process.env.GAME_TOKEN_SECRET || crypto.randomBytes(32).toString("hex");
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14;
-const MAX_BODY = 128 * 1024;
-
-if (TOKEN_SECRET.length < 32) {
-    console.warn("[EMJI] Definí GAME_TOKEN_SECRET con al menos 32 caracteres antes de exponer el backend a internet.");
+if (!ADMIN_TOKEN) {
+  console.error("Falta ADMIN_TOKEN. Configurá una variable de entorno segura antes de iniciar.");
+  process.exit(1);
 }
 
 const db = new DatabaseSync(DB_FILE);
@@ -30,8 +15,6 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    email TEXT,
-    email_key TEXT,
     username TEXT NOT NULL,
     username_key TEXT NOT NULL UNIQUE,
     password_salt TEXT NOT NULL,
@@ -68,13 +51,9 @@ CREATE TABLE IF NOT EXISTS room_members (
 
 const q = {
     userByKey: db.prepare("SELECT * FROM users WHERE username_key = ?"),
-    userByEmail: db.prepare("SELECT * FROM users WHERE email_key = ?"),
     userById: db.prepare("SELECT * FROM users WHERE id = ?"),
-    insertUser: db.prepare(`
-        INSERT INTO users
-        (id, email, email_key, username, username_key, password_salt, password_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `),
+    insertUser: db.prepare(`INSERT INTO users
+        (id,username,username_key,password_salt,password_hash) VALUES (?,?,?,?,?)`),
     updateProfile: db.prepare(`UPDATE users SET robot_name=?,loadout_json=?,program_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`),
     ranking: db.prepare(`SELECT u.username,u.robot_name,COUNT(s.id) gamesPlayed,COALESCE(MAX(s.score),0) highScore,COALESCE(SUM(s.score),0) totalScore
         FROM users u LEFT JOIN scores s ON s.user_id=u.id
@@ -121,16 +100,6 @@ function readBody(req) {
         });
         req.on("error", reject);
     });
-}
-
-function normalizeEmail(value) {
-    return String(value || "").trim().toLowerCase();
-}
-
-function isValidEmail(value) {
-    if (value.length > 254) return false;
-
-    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 }
 
 function normalizeUsername(value) {
@@ -212,100 +181,28 @@ async function handle(req, res) {
 
         if (req.method === "POST" && (path === "/api/register" || path === "/api/login")) {
             const body = await readBody(req);
-
-            const email = normalizeEmail(body.email);
             const username = normalizeUsername(body.username);
             const password = String(body.password || "");
+            if (!/^[\p{L}\p{N}_ -]{3,18}$/u.test(username))
+                return json(res, 400, { error: "El usuario debe tener entre 3 y 18 caracteres." });
+            if (password.length < 8 || password.length > 128)
+                return json(res, 400, { error: "La contraseña debe tener entre 8 y 128 caracteres." });
 
-            // Validar email
-            if (!isValidEmail(email)) {
-                return json(res, 400, {
-                    error: "Ingresá un email válido."
-                });
-            }
-
-            // Validar contraseña
-            if (password.length < 8 || password.length > 128) {
-                return json(res, 400, {
-                    error: "La contraseña debe tener entre 8 y 128 caracteres."
-                });
-            }
-
+            let user = q.userByKey.get(usernameKey(username));
             if (path === "/api/register") {
-                // El username solo se solicita durante el registro
-                if (!/^[\p{L}\p{N}_ -]{3,18}$/u.test(username)) {
-                    return json(res, 400, {
-                        error: "El usuario debe tener entre 3 y 18 caracteres."
-                    });
-                }
-
-                // Comprobar si el email ya existe
-                const existingEmail = q.userByEmail.get(email);
-
-                if (existingEmail) {
-                    return json(res, 409, {
-                        error: "Ese email ya está registrado."
-                    });
-                }
-
-                // Comprobar si el username ya existe
-                const existingUsername = q.userByKey.get(usernameKey(username));
-
-                if (existingUsername) {
-                    return json(res, 409, {
-                        error: "Ese nombre de usuario ya existe."
-                    });
-                }
-
+                if (user) return json(res, 409, { error: "Ese nombre de usuario ya existe." });
                 const id = crypto.randomUUID();
                 const salt = crypto.randomBytes(16).toString("hex");
-
-                q.insertUser.run(
-                    id,
-                    email,
-                    email,
-                    username,
-                    usernameKey(username),
-                    salt,
-                    passwordHash(password, salt)
-                );
-
-                const user = q.userById.get(id);
-
-                return json(res, 201, {
-                    token: signToken(user),
-                    user: publicUser(user)
-                });
+                q.insertUser.run(id, username, usernameKey(username), salt, passwordHash(password, salt));
+                user = q.userById.get(id);
+            } else {
+                if (!user) return json(res, 401, { error: "Usuario o contraseña incorrectos." });
+                const actual = Buffer.from(passwordHash(password, user.password_salt), "hex");
+                const expected = Buffer.from(user.password_hash, "hex");
+                if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected))
+                    return json(res, 401, { error: "Usuario o contraseña incorrectos." });
             }
-
-            const user = q.userByEmail.get(email);
-
-            if (!user) {
-                return json(res, 401, {
-                    error: "Email o contraseña incorrectos."
-                });
-            }
-
-            const actual = Buffer.from(
-                passwordHash(password, user.password_salt),
-                "hex"
-            );
-
-            const expected = Buffer.from(user.password_hash, "hex");
-
-            if (
-                actual.length !== expected.length ||
-                !crypto.timingSafeEqual(actual, expected)
-            ) {
-                return json(res, 401, {
-                    error: "Email o contraseña incorrectos."
-                });
-            }
-
-            return json(res, 200, {
-                token: signToken(user),
-                user: publicUser(user)
-            });
+            return json(res, 200, { token: signToken(user), user: publicUser(user) });
         }
 
         const user = requireUser(req);
@@ -374,6 +271,82 @@ async function handle(req, res) {
         console.error("[EMJI API]", error);
         return json(res, error.status || 500, { error: error.status ? error.message : "Error interno del servidor." });
     }
+
+    if (info.role === "admin" && packet.type === "decision") {
+      const request = pending.get(String(packet.requestId));
+      if (!request) {
+        send(socket, { type: "decision_result", ok: false, message: "La solicitud ya no está disponible." });
+        return;
+      }
+
+      pending.delete(String(packet.requestId));
+      const accept = packet.accept === true && activeController === null &&
+        request.socket.readyState === WebSocket.OPEN;
+
+      if (accept) {
+        activeController = request.id;
+        send(request.socket, { type: "control_result", approved: true, message: "¡Conexión autorizada!" });
+        broadcastAdmins({ type: "controller_approved", id: request.id, name: request.name });
+        send(socket, { type: "decision_result", ok: true });
+      } else {
+        send(request.socket, { type: "control_result", approved: false, message: "El administrador rechazó la solicitud." });
+        broadcastAdmins({ type: "controller_rejected", id: request.id, name: request.name });
+        send(socket, { type: "decision_result", ok: true });
+      }
+      sendSnapshotToAllAdmins();
+      return;
+    }
+
+    if (info.role === "admin" && packet.type === "disconnect_controller") {
+      if (activeController === String(packet.id)) {
+        const controller = [...clients.entries()].find(([, c]) => c.id === activeController);
+        if (controller) {
+          send(controller[0], { type: "control_revoked", message: "El administrador finalizó tu sesión." });
+        }
+        activeController = null;
+        broadcastAdmins({ type: "controller_disconnected", id: String(packet.id), name: controller?.[1].name || "Jugador" });
+        sendSnapshotToAllAdmins();
+      }
+      return;
+    }
+
+    if (info.role === "controller" && packet.type === "input") {
+      if (activeController !== info.id) return; // Unapproved clients cannot control the game.
+
+      const m = packet.movement || {};
+      const clean = {
+        type: "input",
+        movement: {
+          x: Math.max(-1, Math.min(1, Number(m.x) || 0)),
+          y: Math.max(-1, Math.min(1, Number(m.y) || 0))
+        },
+        shoot: packet.shoot === true,
+        shield: packet.shield === true,
+        boost: packet.boost === true
+      };
+
+      for (const [client, clientInfo] of clients) {
+        if (clientInfo.role === "game" && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(clean));
+        }
+      }
+    }
+  });
+
+  socket.on("close", () => {
+    removeController(socket);
+    const info = clients.get(socket);
+    if (info?.role === "admin") console.log("Panel administrador desconectado");
+    clients.delete(socket);
+  });
+
+  socket.on("error", err => console.error("WebSocket:", err.message));
+});
+
+function sendSnapshotToAllAdmins() {
+  for (const [socket, info] of clients) {
+    if (info.role === "admin") sendSnapshot(socket);
+  }
 }
 
 function logRequest(req, res) {
