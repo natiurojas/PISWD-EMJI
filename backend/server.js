@@ -201,6 +201,26 @@ function broadcastRoom(roomId, data, except = null) {
     }
 }
 
+function closeRoom(roomId, reason = "empty") {
+    const room = q.roomById.get(roomId);
+
+    if (!room || room.status === "closed")
+        return;
+
+    db.prepare("UPDATE rooms SET status='closed' WHERE id=?")
+        .run(roomId);
+
+    db.prepare("DELETE FROM room_members WHERE room_id=?")
+        .run(roomId);
+
+    console.log(`[EMJI] Sala ${roomId} cerrada. Motivo: ${reason}`);
+
+    broadcastRoom(roomId, {
+        type: "room:closed",
+        reason
+    });
+}
+
 async function handle(req, res) {
     if (req.method === "OPTIONS") return json(res, 204, {});
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -394,8 +414,8 @@ function logRequest(req, res) {
 
         const statusLabel =
             status >= 500 ? "ERROR" :
-            status >= 400 ? "WARN" :
-            "OK";
+                status >= 400 ? "WARN" :
+                    "OK";
 
         console.log(
             `[EMJI] ${time} | ${method} ${path} | ${status} | ${duration}ms | ${statusLabel}`
