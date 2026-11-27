@@ -30,6 +30,8 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
+    email TEXT,
+    email_key TEXT,
     username TEXT NOT NULL,
     username_key TEXT NOT NULL UNIQUE,
     password_salt TEXT NOT NULL,
@@ -66,9 +68,13 @@ CREATE TABLE IF NOT EXISTS room_members (
 
 const q = {
     userByKey: db.prepare("SELECT * FROM users WHERE username_key = ?"),
+    userByEmail: db.prepare("SELECT * FROM users WHERE email_key = ?"),
     userById: db.prepare("SELECT * FROM users WHERE id = ?"),
-    insertUser: db.prepare(`INSERT INTO users
-        (id,username,username_key,password_salt,password_hash) VALUES (?,?,?,?,?)`),
+    insertUser: db.prepare(`
+        INSERT INTO users
+        (id, email, email_key, username, username_key, password_salt, password_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `),
     updateProfile: db.prepare(`UPDATE users SET robot_name=?,loadout_json=?,program_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`),
     ranking: db.prepare(`SELECT u.username,u.robot_name,COUNT(s.id) gamesPlayed,COALESCE(MAX(s.score),0) highScore,COALESCE(SUM(s.score),0) totalScore
         FROM users u LEFT JOIN scores s ON s.user_id=u.id
@@ -115,6 +121,16 @@ function readBody(req) {
         });
         req.on("error", reject);
     });
+}
+
+function normalizeEmail(value) {
+    return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+    if (value.length > 254) return false;
+
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 }
 
 function normalizeUsername(value) {
@@ -196,28 +212,100 @@ async function handle(req, res) {
 
         if (req.method === "POST" && (path === "/api/register" || path === "/api/login")) {
             const body = await readBody(req);
+
+            const email = normalizeEmail(body.email);
             const username = normalizeUsername(body.username);
             const password = String(body.password || "");
-            if (!/^[\p{L}\p{N}_ -]{3,18}$/u.test(username))
-                return json(res, 400, { error: "El usuario debe tener entre 3 y 18 caracteres." });
-            if (password.length < 8 || password.length > 128)
-                return json(res, 400, { error: "La contraseña debe tener entre 8 y 128 caracteres." });
 
-            let user = q.userByKey.get(usernameKey(username));
+            // Validar email
+            if (!isValidEmail(email)) {
+                return json(res, 400, {
+                    error: "Ingresá un email válido."
+                });
+            }
+
+            // Validar contraseña
+            if (password.length < 8 || password.length > 128) {
+                return json(res, 400, {
+                    error: "La contraseña debe tener entre 8 y 128 caracteres."
+                });
+            }
+
             if (path === "/api/register") {
-                if (user) return json(res, 409, { error: "Ese nombre de usuario ya existe." });
+                // El username solo se solicita durante el registro
+                if (!/^[\p{L}\p{N}_ -]{3,18}$/u.test(username)) {
+                    return json(res, 400, {
+                        error: "El usuario debe tener entre 3 y 18 caracteres."
+                    });
+                }
+
+                // Comprobar si el email ya existe
+                const existingEmail = q.userByEmail.get(email);
+
+                if (existingEmail) {
+                    return json(res, 409, {
+                        error: "Ese email ya está registrado."
+                    });
+                }
+
+                // Comprobar si el username ya existe
+                const existingUsername = q.userByKey.get(usernameKey(username));
+
+                if (existingUsername) {
+                    return json(res, 409, {
+                        error: "Ese nombre de usuario ya existe."
+                    });
+                }
+
                 const id = crypto.randomUUID();
                 const salt = crypto.randomBytes(16).toString("hex");
-                q.insertUser.run(id, username, usernameKey(username), salt, passwordHash(password, salt));
-                user = q.userById.get(id);
-            } else {
-                if (!user) return json(res, 401, { error: "Usuario o contraseña incorrectos." });
-                const actual = Buffer.from(passwordHash(password, user.password_salt), "hex");
-                const expected = Buffer.from(user.password_hash, "hex");
-                if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected))
-                    return json(res, 401, { error: "Usuario o contraseña incorrectos." });
+
+                q.insertUser.run(
+                    id,
+                    email,
+                    email,
+                    username,
+                    usernameKey(username),
+                    salt,
+                    passwordHash(password, salt)
+                );
+
+                const user = q.userById.get(id);
+
+                return json(res, 201, {
+                    token: signToken(user),
+                    user: publicUser(user)
+                });
             }
-            return json(res, 200, { token: signToken(user), user: publicUser(user) });
+
+            const user = q.userByEmail.get(email);
+
+            if (!user) {
+                return json(res, 401, {
+                    error: "Email o contraseña incorrectos."
+                });
+            }
+
+            const actual = Buffer.from(
+                passwordHash(password, user.password_salt),
+                "hex"
+            );
+
+            const expected = Buffer.from(user.password_hash, "hex");
+
+            if (
+                actual.length !== expected.length ||
+                !crypto.timingSafeEqual(actual, expected)
+            ) {
+                return json(res, 401, {
+                    error: "Email o contraseña incorrectos."
+                });
+            }
+
+            return json(res, 200, {
+                token: signToken(user),
+                user: publicUser(user)
+            });
         }
 
         const user = requireUser(req);
@@ -288,7 +376,35 @@ async function handle(req, res) {
     }
 }
 
+function logRequest(req, res) {
+    const start = Date.now();
+    const method = req.method;
+    const path = new URL(
+        req.url,
+        `http://${req.headers.host || "localhost"}`
+    ).pathname;
+
+    res.once("finish", () => {
+        const status = res.statusCode;
+        const duration = Date.now() - start;
+
+        const time = new Date().toLocaleTimeString("es-AR", {
+            hour12: false
+        });
+
+        const statusLabel =
+            status >= 500 ? "ERROR" :
+            status >= 400 ? "WARN" :
+            "OK";
+
+        console.log(
+            `[EMJI] ${time} | ${method} ${path} | ${status} | ${duration}ms | ${statusLabel}`
+        );
+    });
+}
+
 const server = http.createServer((req, res) => {
+    logRequest(req, res)
     handle(req, res);
 });
 
